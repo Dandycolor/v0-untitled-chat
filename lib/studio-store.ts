@@ -147,7 +147,7 @@ export const useStudio = create<StudioState>((set) => ({
   chipNoiseAmount: 0.45,
   chipNoiseScale: 18,
 
-  glareMode: "texture",
+  glareMode: "clearcoat",
   glareIntensity: 0.7,
   glareRotation: 20,
   glareWidth: 0.35,
