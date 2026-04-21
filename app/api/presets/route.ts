@@ -6,7 +6,8 @@ import { type NextRequest, NextResponse } from "next/server"
  *   presets/<id>/meta.json   — { id, name, front, back, createdAt }
  *   presets/<id>/<channel>-<filename>  — uploaded texture files
  *
- * The client reads textures by `pathname` via /api/file.
+ * The Blob store is PUBLIC, so `front`/`back` hold direct CDN URLs that
+ * Three.js's TextureLoader can fetch without any proxy.
  */
 
 type PresetMeta = {
@@ -17,15 +18,11 @@ type PresetMeta = {
   createdAt: number
 }
 
-async function readMeta(pathname: string): Promise<PresetMeta | null> {
+async function readMeta(url: string): Promise<PresetMeta | null> {
   try {
-    // Private store: use /api/file route via absolute URL.
-    // Here (server-side) we can fetch via the Blob SDK directly.
-    const { get } = await import("@vercel/blob")
-    const result = await get(pathname, { access: "private" })
-    if (!result || result.statusCode === 304) return null
-    const text = await new Response(result.stream).text()
-    return JSON.parse(text) as PresetMeta
+    const res = await fetch(url, { cache: "no-store" })
+    if (!res.ok) return null
+    return (await res.json()) as PresetMeta
   } catch {
     return null
   }
@@ -35,7 +32,7 @@ export async function GET() {
   try {
     const { blobs } = await list({ prefix: "presets/" })
     const metaBlobs = blobs.filter((b) => b.pathname.endsWith("/meta.json"))
-    const metas = await Promise.all(metaBlobs.map((b) => readMeta(b.pathname)))
+    const metas = await Promise.all(metaBlobs.map((b) => readMeta(b.url)))
     const presets = metas.filter(Boolean) as PresetMeta[]
     presets.sort((a, b) => b.createdAt - a.createdAt)
     return NextResponse.json({ presets })
@@ -61,9 +58,9 @@ export async function POST(request: NextRequest) {
         if (!file || !(file instanceof File) || file.size === 0) continue
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_")
         const pathname = `presets/${id}/${side}-${ch}-${safeName}`
-        const blob = await put(pathname, file, { access: "private", allowOverwrite: true })
-        if (side === "front") front[ch] = blob.pathname
-        else back[ch] = blob.pathname
+        const blob = await put(pathname, file, { access: "public", allowOverwrite: true })
+        if (side === "front") front[ch] = blob.url
+        else back[ch] = blob.url
       }
     }
 
@@ -75,7 +72,7 @@ export async function POST(request: NextRequest) {
       createdAt: Date.now(),
     }
     await put(`presets/${id}/meta.json`, JSON.stringify(meta), {
-      access: "private",
+      access: "public",
       contentType: "application/json",
       allowOverwrite: true,
     })
