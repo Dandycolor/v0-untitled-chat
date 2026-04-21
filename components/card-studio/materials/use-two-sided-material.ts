@@ -149,6 +149,17 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     mat.aoMap = frontAo.tex
     mat.normalScale = new THREE.Vector2(1, 1)
 
+    // IMPORTANT: MeshPhysicalMaterial's clearcoat layer uses its OWN normal and
+    // roughness maps. If we don't assign them, the clearcoat highlight forms on
+    // an idealized flat plane, which blows out into a flat mirror blob that
+    // ignores the texture grain and normal detail underneath. Feeding the same
+    // maps into clearcoatNormalMap / clearcoatRoughnessMap makes the PBR glare
+    // follow wood grain, embossing, and roughness variation — i.e. "the PBR
+    // highlight reacts to the material shader".
+    mat.clearcoatNormalMap = frontNormal.tex
+    mat.clearcoatRoughnessMap = frontRough.tex
+    mat.clearcoatNormalScale = new THREE.Vector2(1, 1)
+
     // Ensure Three's shader program cache never returns a stale blended program.
     const cacheKey = `card-two-sided-${sideAxis}`
     mat.customProgramCacheKey = () => cacheKey
@@ -338,6 +349,10 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
   material.clearcoat = clearcoat
   material.clearcoatRoughness = clearcoatRoughness
   material.normalScale.set(normalScale, normalScale)
+  // Keep the clearcoat normals aligned with the base normals so the PBR glare
+  // follows the same micro-geometry as the diffuse — when the user dials up
+  // Normal intensity, the highlight also starts breaking up over the texture.
+  material.clearcoatNormalScale.set(normalScale, normalScale)
 
   // Cleanup on unmount
   useEffect(() => {
