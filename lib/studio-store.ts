@@ -6,6 +6,7 @@ export type CardModelId = "card_no_chip" | "card_chip1" | "card_chip2" | "card_c
 export type Orientation = "horizontal" | "vertical"
 export type ViewId = "front" | "back" | "threeQuarterFront" | "threeQuarterBack" | "top" | "side"
 export type GlareMode = "off" | "texture" | "clearcoat"
+export type Projection = "perspective" | "orthographic"
 
 export type HdrPreset =
   | "studio"
@@ -48,6 +49,7 @@ export type StudioState = {
   // View / camera
   viewId: ViewId
   autoRotate: boolean
+  projection: Projection
 
   // PBR per side
   frontPbr: PbrMapSet
@@ -130,6 +132,7 @@ export const useStudio = create<StudioState>((set) => ({
 
   viewId: "threeQuarterFront",
   autoRotate: false,
+  projection: "perspective",
 
   frontPbr: DEFAULT_DOODLE_FRONT,
   backPbr: DEFAULT_DOODLE_BACK,

@@ -146,6 +146,24 @@ export function ControlPanel() {
                 </ToggleGroup>
               </Row>
 
+              <Row label="Projection">
+                <ToggleGroup
+                  type="single"
+                  value={s.projection}
+                  onValueChange={(v) =>
+                    v && s.set("projection", v as "perspective" | "orthographic")
+                  }
+                  className="w-full"
+                >
+                  <ToggleGroupItem value="perspective" className="flex-1">
+                    Perspective
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="orthographic" className="flex-1">
+                    Orthographic
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              </Row>
+
               <Row label="Camera view">
                 <div className="grid grid-cols-3 gap-1.5">
                   {(

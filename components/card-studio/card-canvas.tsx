@@ -23,7 +23,6 @@ export function CardCanvas() {
         preserveDrawingBuffer: true,
         powerPreference: "high-performance",
       }}
-      camera={{ position: [1.8, 1.3, 2.8], fov: 28 }}
       style={{
         background:
           backgroundMode === "transparent"

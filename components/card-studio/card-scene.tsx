@@ -2,11 +2,18 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react"
 import * as THREE from "three"
-import { Environment, Lightformer, OrbitControls, ContactShadows } from "@react-three/drei"
+import {
+  Environment,
+  Lightformer,
+  OrbitControls,
+  ContactShadows,
+  PerspectiveCamera,
+  OrthographicCamera,
+} from "@react-three/drei"
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib"
 import { useStudio } from "@/lib/studio-store"
 import { CardModel } from "./card-model"
-import { CameraRig } from "./camera-rig"
+import { CameraRig, VIEWS } from "./camera-rig"
 import { GlareLayer } from "./glare-layer"
 
 /**
@@ -23,6 +30,8 @@ export function CardScene() {
   const viewId = useStudio((s) => s.viewId)
   const autoRotate = useStudio((s) => s.autoRotate)
   const glareMode = useStudio((s) => s.glareMode)
+  const projection = useStudio((s) => s.projection)
+  const initialView = VIEWS[viewId]
 
   const [rigEnabled, setRigEnabled] = useState(true)
   const rigTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -43,6 +52,21 @@ export function CardScene() {
 
   return (
     <>
+      <PerspectiveCamera
+        makeDefault={projection === "perspective"}
+        position={initialView.pos}
+        fov={initialView.fov}
+        near={0.1}
+        far={100}
+      />
+      <OrthographicCamera
+        makeDefault={projection === "orthographic"}
+        position={initialView.pos}
+        zoom={initialView.zoom}
+        near={0.1}
+        far={100}
+      />
+
       <Environment
         frames={1}
         resolution={256}
