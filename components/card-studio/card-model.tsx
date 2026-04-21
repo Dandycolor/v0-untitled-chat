@@ -202,8 +202,8 @@ export function CardModel() {
     const planeH = size.getComponent(axes[1])
     const thickness = size.getComponent(sideAxis)
 
-    // Plane natural size ~ 22% × 28% of card
-    const logoW = planeW * 0.22 * logoScale
+    // Natural logo width = 60% of card width at scale=1. At scale≈1.6 it covers the card edge-to-edge.
+    const logoW = planeW * 0.6 * logoScale
     // Preserve logo aspect via texture
     const logoAspect = logoTexture
       ? (logoTexture.image?.width ?? 1) / (logoTexture.image?.height ?? 1)

@@ -374,8 +374,8 @@ export function ControlPanel() {
               <NumSlider
                 label="Scale"
                 value={s.logoScale}
-                min={0.2}
-                max={3}
+                min={0.1}
+                max={1.6}
                 onChange={(v) => s.set("logoScale", v)}
               />
               <NumSlider
