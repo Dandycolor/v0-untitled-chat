@@ -96,17 +96,27 @@ export function CardModel() {
     ;(loader as unknown as GLTFLoader).setCrossOrigin("anonymous")
   })
 
-  // Analyze once per model
-  const { analyzed, sideAxis, bodyMesh, bodyBBox, bodyCenter } = useMemo(() => {
+  // Analyze once per model + compute normalization so any GLB unit system (mm, cm, m)
+  // ends up with the card ~1.6 units wide, centered at origin.
+  const { analyzed, sideAxis, bodyMesh, bodyBBox, bodyCenter, normScale, normOffset } = useMemo(() => {
     gltf.scene.updateMatrixWorld(true)
     const { analyzed, sideAxis } = analyzeMeshes(gltf.scene)
     const body = analyzed.find((a) => a.role === "body")
+    const bbox = body?.bbox ?? new THREE.Box3().setFromObject(gltf.scene)
+    const center = bbox.getCenter(new THREE.Vector3())
+    const size = bbox.getSize(new THREE.Vector3())
+    const maxSide = Math.max(size.x, size.y, size.z) || 1
+    const TARGET = 1.6
+    const scale = TARGET / maxSide
+    const offset = center.clone().multiplyScalar(-1)
     return {
       analyzed,
       sideAxis,
       bodyMesh: body?.mesh,
-      bodyBBox: body?.bbox,
-      bodyCenter: body?.bbox.getCenter(new THREE.Vector3()) ?? new THREE.Vector3(),
+      bodyBBox: bbox,
+      bodyCenter: center,
+      normScale: scale,
+      normOffset: offset.toArray() as [number, number, number],
     }
   }, [gltf.scene])
 
@@ -182,25 +192,27 @@ export function CardModel() {
     orientation === "vertical" ? [0, 0, Math.PI / 2] : [0, 0, 0]
 
   return (
-    <group rotation={groupRotation}>
-      <primitive object={gltf.scene} />
-      {showLogo && logoTexture && logoPlane && (
-        <mesh position={logoPlane.pos} rotation={logoPlane.rot} renderOrder={5}>
-          <planeGeometry args={[logoPlane.w, logoPlane.h]} />
-          <meshPhysicalMaterial
-            map={logoTexture}
-            transparent
-            alphaTest={0.02}
-            color={logoColor}
-            metalness={logoMetalness}
-            roughness={logoRoughness}
-            polygonOffset
-            polygonOffsetFactor={-4}
-            polygonOffsetUnits={-4}
-            depthWrite={false}
-          />
-        </mesh>
-      )}
+    <group rotation={groupRotation} scale={normScale}>
+      <group position={normOffset}>
+        <primitive object={gltf.scene} />
+        {showLogo && logoTexture && logoPlane && (
+          <mesh position={logoPlane.pos} rotation={logoPlane.rot} renderOrder={5}>
+            <planeGeometry args={[logoPlane.w, logoPlane.h]} />
+            <meshPhysicalMaterial
+              map={logoTexture}
+              transparent
+              alphaTest={0.02}
+              color={logoColor}
+              metalness={logoMetalness}
+              roughness={logoRoughness}
+              polygonOffset
+              polygonOffsetFactor={-4}
+              polygonOffsetUnits={-4}
+              depthWrite={false}
+            />
+          </mesh>
+        )}
+      </group>
     </group>
   )
 }

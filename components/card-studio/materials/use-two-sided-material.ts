@@ -153,10 +153,10 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <map_fragment>",
         `#ifdef USE_MAP
-          float csB = cs_sideBlend();
+          float csBmap = cs_sideBlend();
           vec4 sampledFront = texture2D(uFrontAlbedo, vMapUv);
           vec4 sampledBack = texture2D(uBackAlbedo, vMapUv);
-          vec4 sampledDiffuseColor = mix(sampledBack, sampledFront, csB);
+          vec4 sampledDiffuseColor = mix(sampledBack, sampledFront, csBmap);
           diffuseColor *= sampledDiffuseColor;
         #endif`,
       )
@@ -166,10 +166,10 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         "#include <roughnessmap_fragment>",
         `float roughnessFactor = roughness;
         #ifdef USE_ROUGHNESSMAP
-          float csB = cs_sideBlend();
+          float csBrough = cs_sideBlend();
           vec4 rFront = texture2D(uFrontRough, vRoughnessMapUv);
           vec4 rBack = texture2D(uBackRough, vRoughnessMapUv);
-          vec4 texelRoughness = mix(rBack, rFront, csB);
+          vec4 texelRoughness = mix(rBack, rFront, csBrough);
           roughnessFactor *= texelRoughness.g;
         #endif`,
       )
@@ -179,28 +179,24 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         "#include <metalnessmap_fragment>",
         `float metalnessFactor = metalness;
         #ifdef USE_METALNESSMAP
-          float csB = cs_sideBlend();
+          float csBmetal = cs_sideBlend();
           vec4 mFront = texture2D(uFrontMetal, vMetalnessMapUv);
           vec4 mBack = texture2D(uBackMetal, vMetalnessMapUv);
-          vec4 texelMetalness = mix(mBack, mFront, csB);
+          vec4 texelMetalness = mix(mBack, mFront, csBmetal);
           metalnessFactor *= texelMetalness.b;
         #endif`,
       )
 
-      // --- AO blend (R channel). We keep Three's specular-occlusion logic intact by
-      // writing the blended AO into a variable read by <aomap_fragment>. Instead of
-      // replacing that chunk (which depends on internal variables that change between
-      // Three versions), we inject a pre-hook that overrides the aoMap sample.
+      // --- AO blend (R channel). We leave Three's aomap_fragment logic in place and
+      // only override the raw texture sample call so specular occlusion still runs.
       shader.fragmentShader = shader.fragmentShader.replace(
         "#ifdef USE_AOMAP",
         `#ifdef USE_AOMAP
-          float csB2 = cs_sideBlend();
+          float csBao = cs_sideBlend();
           vec4 aFront = texture2D(uFrontAo, vAoMapUv);
           vec4 aBack = texture2D(uBackAo, vAoMapUv);
-          // Override the aoMap texture sample by redefining the macro-like access.
-          #define CARD_AO_SAMPLE mix(aBack, aFront, csB2).r`,
+          #define CARD_AO_SAMPLE mix(aBack, aFront, csBao).r`,
       )
-      // The original chunk reads `texture2D( aoMap, vAoMapUv ).r` — replace that call.
       shader.fragmentShader = shader.fragmentShader.replaceAll(
         "texture2D( aoMap, vAoMapUv ).r",
         "CARD_AO_SAMPLE",
