@@ -201,7 +201,7 @@ const FRAG = /* glsl */ `
     float starDist = length(f - starPos);
     // Star has a tiny circular core; use an inverse-square-ish falloff so it
     // reads as a bright pinprick rather than a fuzzy dot. Radius is driven by
-    // `uSparkleSize` so the user can dial up fat glitter flakes.
+    // uSparkleSize so the user can dial up fat glitter flakes.
     // Clamp so the star can never exceed its own grid cell (distance 0..~0.7).
     float starR = clamp(0.06 * uSparkleSize, 0.005, 0.5);
     float starCore = smoothstep(starR, 0.0, starDist);
