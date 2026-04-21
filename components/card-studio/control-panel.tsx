@@ -185,6 +185,7 @@ export function ControlPanel() {
                       ["back", "Back"],
                       ["threeQuarterBack", "3/4 B"],
                       ["top", "Top"],
+                      ["hero", "Hero"],
                     ] as Array<[ViewId, string]>
                   ).map(([v, lbl]) => (
                     <Button

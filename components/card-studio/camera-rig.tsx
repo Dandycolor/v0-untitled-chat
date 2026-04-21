@@ -23,6 +23,11 @@ export const VIEWS: Record<ViewId, { pos: [number, number, number]; fov: number;
   threeQuarterBack: { pos: [-1.7, 1.2, -2.6], fov: 30, zoom: 400 },
   top: { pos: [0, 3.4, 0.01], fov: 32, zoom: 400 },
   side: { pos: [3.4, 0, 0], fov: 28, zoom: 420 },
+  // Low-angle, sharp-oblique marketing shot (think SberBank hero renders):
+  // camera sits near card level with a strong azimuth offset, so the long edge
+  // recedes deep into frame. The narrow FOV (~22°) behaves like a ~90mm lens,
+  // which is what compresses perspective without wide-angle distortion.
+  hero: { pos: [3.6, 0.45, 1.9], fov: 22, zoom: 520 },
 }
 
 export function CameraRig({

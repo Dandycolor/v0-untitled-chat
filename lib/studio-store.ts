@@ -4,7 +4,14 @@ import { create } from "zustand"
 
 export type CardModelId = "card_no_chip" | "card_chip1" | "card_chip2" | "card_chip3"
 export type Orientation = "horizontal" | "vertical"
-export type ViewId = "front" | "back" | "threeQuarterFront" | "threeQuarterBack" | "top" | "side"
+export type ViewId =
+  | "front"
+  | "back"
+  | "threeQuarterFront"
+  | "threeQuarterBack"
+  | "top"
+  | "side"
+  | "hero"
 export type GlareMode = "off" | "texture" | "clearcoat"
 export type Projection = "perspective" | "orthographic"
 
