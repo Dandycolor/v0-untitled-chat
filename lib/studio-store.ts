@@ -108,6 +108,8 @@ export type StudioState = {
   keyIntensity: number
   fillIntensity: number
   rimIntensity: number
+  /** Hex color of the main (key) directional light that orbits the card. */
+  keyColor: string
   /** Azimuth (degrees, 0..360) of the key light / HDR rotation around the card's up axis. */
   lightAzimuth: number
   /** Elevation (degrees, 0..89) of the key light above the horizon. */
@@ -190,6 +192,7 @@ export const useStudio = create<StudioState>((set) => ({
   backgroundMode: "studio",
   backgroundColor: "#0b0b0d",
   keyIntensity: 1.2,
+  keyColor: "#ffffff",
   fillIntensity: 0.6,
   rimIntensity: 0.8,
   lightAzimuth: 35,

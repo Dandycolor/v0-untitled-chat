@@ -26,6 +26,7 @@ export function CardScene() {
   const backgroundMode = useStudio((s) => s.backgroundMode)
   const hdrPreset = useStudio((s) => s.hdrPreset)
   const keyIntensity = useStudio((s) => s.keyIntensity)
+  const keyColor = useStudio((s) => s.keyColor)
   const fillIntensity = useStudio((s) => s.fillIntensity)
   const rimIntensity = useStudio((s) => s.rimIntensity)
   const lightAzimuth = useStudio((s) => s.lightAzimuth)
@@ -178,7 +179,7 @@ export function CardScene() {
 
       {backgroundMode === "solid" && <SolidBackground />}
 
-      <directionalLight position={keyPos} intensity={keyIntensity} />
+      <directionalLight position={keyPos} intensity={keyIntensity} color={keyColor} />
       <directionalLight position={fillPos} intensity={fillIntensity} />
       <directionalLight position={rimPos} intensity={rimIntensity} color={"#b8d0ff"} />
       <ambientLight intensity={0.12} />

@@ -556,9 +556,25 @@ export function ControlPanel() {
                 label="Key light"
                 value={s.keyIntensity}
                 min={0}
-                max={3}
+                max={8}
+                step={0.01}
                 onChange={(v) => s.set("keyIntensity", v)}
               />
+              <Row label="Key color">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="color"
+                    value={s.keyColor}
+                    onChange={(e) => s.set("keyColor", e.target.value)}
+                    className="h-8 w-14 p-1"
+                  />
+                  <Input
+                    value={s.keyColor}
+                    onChange={(e) => s.set("keyColor", e.target.value)}
+                    className="h-8 flex-1 font-mono text-xs"
+                  />
+                </div>
+              </Row>
               <NumSlider
                 label="Fill light"
                 value={s.fillIntensity}
