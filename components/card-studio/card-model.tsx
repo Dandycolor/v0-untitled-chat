@@ -123,8 +123,8 @@ export function CardModel() {
   const chipMetalness = useStudio((s) => s.chipMetalness)
   const chipRoughness = useStudio((s) => s.chipRoughness)
   const chipAnisotropy = useStudio((s) => s.chipAnisotropy)
-  const chipPattern = useStudio((s) => s.chipPattern)
-  const chipPatternStrength = useStudio((s) => s.chipPatternStrength)
+  const chipNoiseAmount = useStudio((s) => s.chipNoiseAmount)
+  const chipNoiseScale = useStudio((s) => s.chipNoiseScale)
   const showLogo = useStudio((s) => s.showLogo)
   const logoScale = useStudio((s) => s.logoScale)
   const logoOffsetX = useStudio((s) => s.logoOffsetX)
@@ -177,8 +177,8 @@ export function CardModel() {
     metalness: chipMetalness,
     roughness: chipRoughness,
     anisotropy: chipAnisotropy,
-    pattern: chipPattern,
-    patternStrength: chipPatternStrength,
+    noiseAmount: chipNoiseAmount,
+    noiseScale: chipNoiseScale,
   })
 
   // Assign materials to correct meshes

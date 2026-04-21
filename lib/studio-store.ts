@@ -65,8 +65,8 @@ export type StudioState = {
   chipMetalness: number
   chipRoughness: number
   chipAnisotropy: number
-  chipPattern: "grid" | "stripes" | "none"
-  chipPatternStrength: number
+  chipNoiseAmount: number
+  chipNoiseScale: number
 
   // Glare
   glareMode: GlareMode
@@ -144,8 +144,8 @@ export const useStudio = create<StudioState>((set) => ({
   chipMetalness: 1,
   chipRoughness: 0.28,
   chipAnisotropy: 0.6,
-  chipPattern: "grid",
-  chipPatternStrength: 0.5,
+  chipNoiseAmount: 0.45,
+  chipNoiseScale: 18,
 
   glareMode: "clearcoat",
   glareIntensity: 0.7,

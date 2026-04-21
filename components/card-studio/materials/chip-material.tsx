@@ -8,25 +8,26 @@ type Props = {
   metalness: number
   roughness: number
   anisotropy: number
-  pattern: "grid" | "stripes" | "none"
-  patternStrength: number
+  /** 0..1 — how strongly the micro-noise modulates roughness. */
+  noiseAmount: number
+  /** Frequency multiplier (typical range 4..64). Higher = finer grain. */
+  noiseScale: number
 }
 
 /**
  * Procedural metallic chip shader built on MeshPhysicalMaterial with onBeforeCompile.
- * The procedural contact pattern modulates roughness to simulate the etched surface of
- * a real chip. All edges use fwidth-based analytical anti-aliasing so we never get
- * pixel-sized moiré even at oblique angles or when the chip is far from the camera.
+ *
+ * Surface micro-detail is produced by value-noise that modulates both roughness and the
+ * normal, which makes the metal look physically etched rather than perfectly polished.
+ * Noise is sampled at two octaves and AA'd via fwidth() against the per-fragment UV
+ * derivative, so there are no pixel-sized moiré artifacts at oblique angles or at distance.
  */
 export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
-  const { color, metalness, roughness, anisotropy, pattern, patternStrength } = props
+  const { color, metalness, roughness, anisotropy, noiseAmount, noiseScale } = props
 
-  const uniformsRef = useRef<{
-    uPattern: { value: number }
-    uPatternStrength: { value: number }
-  }>({
-    uPattern: { value: pattern === "grid" ? 1 : pattern === "stripes" ? 2 : 0 },
-    uPatternStrength: { value: patternStrength },
+  const uniformsRef = useRef({
+    uNoiseAmount: { value: noiseAmount },
+    uNoiseScale: { value: noiseScale },
   })
 
   const material = useMemo(() => {
@@ -41,12 +42,13 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
       clearcoatRoughness: 0.3,
     })
 
-    mat.customProgramCacheKey = () => "chip-material-v2"
+    // Unique cache key so Three never reuses a stale compiled program.
+    mat.customProgramCacheKey = () => "chip-material-noise-v1"
 
     mat.onBeforeCompile = (shader) => {
       // Share the same uniform objects across frames so updating .value hot-swaps live.
-      shader.uniforms.uPattern = uniformsRef.current.uPattern
-      shader.uniforms.uPatternStrength = uniformsRef.current.uPatternStrength
+      shader.uniforms.uNoiseAmount = uniformsRef.current.uNoiseAmount
+      shader.uniforms.uNoiseScale = uniformsRef.current.uNoiseScale
 
       shader.vertexShader = shader.vertexShader.replace(
         "#include <common>",
@@ -63,47 +65,70 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
         "#include <common>",
         `#include <common>
          varying vec2 vChipUv;
-         uniform int uPattern;
-         uniform float uPatternStrength;
+         uniform float uNoiseAmount;
+         uniform float uNoiseScale;
 
-         // Analytical AA line: returns how close we are to a line at frac==0.5 in the given cell.
-         // Fades with screen-space derivative so the line never becomes thinner than one pixel.
-         float aaLine(float v, float freq) {
-           float x = fract(v * freq);
-           float d = abs(x - 0.5);
-           // Pixel width of one cell along this axis (in texture units, via fwidth).
-           float fw = fwidth(v * freq) * 0.5 + 1e-4;
-           // Target a visual line width of ~1.5 px regardless of distance.
-           float edge = clamp(fw * 1.5, 0.005, 0.5);
-           return 1.0 - smoothstep(edge * 0.8, edge * 1.6, d);
+         // Cheap deterministic hash.
+         float chipHash(vec2 p) {
+           p = fract(p * vec2(123.34, 456.21));
+           p += dot(p, p + 45.32);
+           return fract(p.x * p.y);
          }
 
-         float chipPattern(vec2 uv) {
-           if (uPattern == 1) {
-             // Grid: take max of two AA lines, one per axis.
-             float lx = aaLine(uv.x, 6.0);
-             float ly = aaLine(uv.y, 6.0);
-             return max(lx, ly);
-           } else if (uPattern == 2) {
-             return aaLine(uv.x, 12.0);
-           }
-           return 0.0;
+         // Value noise with bilinear interpolation and fwidth-based AA. When the uv
+         // derivative becomes larger than one noise cell, we blend back to the mean 0.5
+         // so the surface returns to a calm tone instead of crawling pixel fireflies.
+         float chipValueNoise(vec2 uv) {
+           vec2 i = floor(uv);
+           vec2 f = fract(uv);
+           vec2 u = f * f * (3.0 - 2.0 * f);
+           float a = chipHash(i);
+           float b = chipHash(i + vec2(1.0, 0.0));
+           float c = chipHash(i + vec2(0.0, 1.0));
+           float d = chipHash(i + vec2(1.0, 1.0));
+           float n = mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+           float fw = fwidth(uv.x) + fwidth(uv.y);
+           float aa = 1.0 - smoothstep(0.6, 1.5, fw);
+           return mix(0.5, n, aa);
+         }
+
+         // Two-octave FBM — still lightweight, gives the chip a "brushed / etched" feel.
+         float chipNoise(vec2 uv) {
+           float n = chipValueNoise(uv);
+           n += 0.5 * chipValueNoise(uv * 2.17 + 7.3);
+           return n / 1.5;
          }`,
       )
 
+      // Modulate roughness around the base value using centered noise.
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <roughnessmap_fragment>",
         `float roughnessFactor = roughness;
-         float p = chipPattern(vChipUv);
-         // Map line presence [0..1] to a symmetric roughness delta centered on 0.
-         roughnessFactor = clamp(roughnessFactor + (p - 0.5) * uPatternStrength, 0.02, 1.0);
-        `,
+         float chipN = chipNoise(vChipUv * uNoiseScale);
+         roughnessFactor = clamp(roughnessFactor + (chipN - 0.5) * uNoiseAmount, 0.02, 1.0);`,
+      )
+
+      // Perturb the normal with the gradient of the same noise so the micro-detail is
+      // visible in specular highlights, not just in the matte response.
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <normal_fragment_maps>",
+        `#include <normal_fragment_maps>
+         {
+           float eps = 1.0 / max(uNoiseScale, 1.0);
+           vec2 nuv = vChipUv * uNoiseScale;
+           float nx1 = chipNoise(nuv + vec2(eps, 0.0));
+           float nx0 = chipNoise(nuv - vec2(eps, 0.0));
+           float ny1 = chipNoise(nuv + vec2(0.0, eps));
+           float ny0 = chipNoise(nuv - vec2(0.0, eps));
+           vec3 bump = normalize(vec3((nx0 - nx1), (ny0 - ny1), 1.0));
+           normal = normalize(mix(normal, normalize(normal + bump * 0.25 * uNoiseAmount), 0.75));
+         }`,
       )
     }
     return mat
   }, [])
 
-  // Live scalar updates (no recompile)
+  // Live scalar updates (no recompile).
   useEffect(() => {
     material.color.set(color)
     material.metalness = metalness
@@ -111,11 +136,11 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
     material.anisotropy = anisotropy
   }, [material, color, metalness, roughness, anisotropy])
 
-  // Live uniform updates (no recompile)
+  // Live uniform updates (no recompile).
   useEffect(() => {
-    uniformsRef.current.uPattern.value = pattern === "grid" ? 1 : pattern === "stripes" ? 2 : 0
-    uniformsRef.current.uPatternStrength.value = patternStrength
-  }, [pattern, patternStrength])
+    uniformsRef.current.uNoiseAmount.value = noiseAmount
+    uniformsRef.current.uNoiseScale.value = noiseScale
+  }, [noiseAmount, noiseScale])
 
   return material
 }

@@ -328,30 +328,20 @@ export function ControlPanel() {
                 max={1}
                 onChange={(v) => s.set("chipAnisotropy", v)}
               />
-              <Row label="Pattern">
-                <ToggleGroup
-                  type="single"
-                  value={s.chipPattern}
-                  onValueChange={(v) => v && s.set("chipPattern", v as typeof s.chipPattern)}
-                  className="w-full"
-                >
-                  <ToggleGroupItem value="grid" className="flex-1">
-                    Grid
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="stripes" className="flex-1">
-                    Stripes
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="none" className="flex-1">
-                    None
-                  </ToggleGroupItem>
-                </ToggleGroup>
-              </Row>
               <NumSlider
-                label="Pattern strength"
-                value={s.chipPatternStrength}
+                label="Noise amount"
+                value={s.chipNoiseAmount}
                 min={0}
                 max={1}
-                onChange={(v) => s.set("chipPatternStrength", v)}
+                onChange={(v) => s.set("chipNoiseAmount", v)}
+              />
+              <NumSlider
+                label="Noise scale"
+                value={s.chipNoiseScale}
+                min={4}
+                max={64}
+                step={1}
+                onChange={(v) => s.set("chipNoiseScale", v)}
               />
             </AccordionContent>
           </AccordionItem>
