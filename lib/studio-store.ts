@@ -94,6 +94,15 @@ export type StudioState = {
   glareWidth: number
   glareSoftness: number
 
+  // Holographic shine (iridescent rainbow overlay, react-native-shine style)
+  holoEnabled: boolean
+  /** Overall brightness of the rainbow band (0..2). */
+  holoIntensity: number
+  /** Stripe frequency — higher = more, tighter bands. */
+  holoScale: number
+  /** Static rotation of the color wheel in [0..1] (maps to 0..360°). */
+  holoHueShift: number
+
   // Logo
   showLogo: boolean
   logoScale: number
@@ -183,6 +192,11 @@ export const useStudio = create<StudioState>((set) => ({
   glareMode: "clearcoat",
   glareIntensity: 0.7,
   glareRotation: 20,
+
+  holoEnabled: false,
+  holoIntensity: 0.9,
+  holoScale: 6,
+  holoHueShift: 0,
   glareWidth: 0.35,
   glareSoftness: 0.4,
 

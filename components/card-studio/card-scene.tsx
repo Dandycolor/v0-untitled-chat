@@ -15,6 +15,7 @@ import { useStudio } from "@/lib/studio-store"
 import { CardModel } from "./card-model"
 import { CameraRig, VIEWS } from "./camera-rig"
 import { GlareLayer } from "./glare-layer"
+import { HoloLayer } from "./holo-layer"
 
 /**
  * Scene contents live here. The environment is built from <Lightformer> meshes
@@ -33,6 +34,10 @@ export function CardScene() {
   const lightAzimuth = useStudio((s) => s.lightAzimuth)
   const lightElevation = useStudio((s) => s.lightElevation)
   const orientation = useStudio((s) => s.orientation)
+  const holoEnabled = useStudio((s) => s.holoEnabled)
+  const holoIntensity = useStudio((s) => s.holoIntensity)
+  const holoScale = useStudio((s) => s.holoScale)
+  const holoHueShift = useStudio((s) => s.holoHueShift)
 
   // Compute key light position from azimuth/elevation so the user can rotate the highlight
   // around the card. We also rotate the HDR environment by the same azimuth so PBR reflections
@@ -241,6 +246,34 @@ export function CardScene() {
                   height={glareH}
                   position={[0, 0, 0.014]}
                   rotation={[0, 0, 0]}
+                />
+              </group>
+            </>
+          )}
+
+          {/*
+            Holographic shine: sits a touch higher than the glare plane (~0.45 mm)
+            so when both are on, holo paints over the specular band. Mirrored to
+            the back face the same way glare is.
+          */}
+          {holoEnabled && (
+            <>
+              <HoloLayer
+                width={glareW}
+                height={glareH}
+                position={[0, 0, 0.017]}
+                intensity={holoIntensity}
+                scale={holoScale}
+                hueShift={holoHueShift}
+              />
+              <group rotation={[0, Math.PI, 0]}>
+                <HoloLayer
+                  width={glareW}
+                  height={glareH}
+                  position={[0, 0, 0.017]}
+                  intensity={holoIntensity}
+                  scale={holoScale}
+                  hueShift={holoHueShift}
                 />
               </group>
             </>

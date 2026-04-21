@@ -1,6 +1,6 @@
 "use client"
 
-import { Download, Camera, Sparkles, Palette, Box, Sun, Layers, Cpu } from "lucide-react"
+import { Download, Camera, Sparkles, Palette, Box, Sun, Layers, Cpu, Rainbow } from "lucide-react"
 import { useStudio, type CardModelId, type HdrPreset, type ViewId } from "@/lib/studio-store"
 import { VIEWS } from "./camera-rig"
 import { Slider } from "@/components/ui/slider"
@@ -365,6 +365,49 @@ export function ControlPanel() {
                 <p className="text-xs text-muted-foreground">
                   Physical glare from HDR. Tune via Clearcoat sliders in Card material.
                 </p>
+              )}
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="holo" className="border-b">
+            <SectionTrigger icon={<Rainbow className="size-3.5" />} title="Holographic shine" />
+            <AccordionContent className="space-y-4 px-4 pb-4">
+              <Row label="Enable">
+                <Switch
+                  checked={s.holoEnabled}
+                  onCheckedChange={(v) => s.set("holoEnabled", v)}
+                />
+              </Row>
+              {s.holoEnabled && (
+                <>
+                  <NumSlider
+                    label="Intensity"
+                    value={s.holoIntensity}
+                    min={0}
+                    max={2}
+                    step={0.01}
+                    onChange={(v) => s.set("holoIntensity", v)}
+                  />
+                  <NumSlider
+                    label="Band density"
+                    value={s.holoScale}
+                    min={1}
+                    max={20}
+                    step={0.1}
+                    onChange={(v) => s.set("holoScale", v)}
+                  />
+                  <NumSlider
+                    label="Hue shift"
+                    value={s.holoHueShift}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    onChange={(v) => s.set("holoHueShift", v)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    View-dependent iridescent rainbow, like a holographic sticker. Reacts to camera angle.
+                  </p>
+                </>
               )}
             </AccordionContent>
           </AccordionItem>
