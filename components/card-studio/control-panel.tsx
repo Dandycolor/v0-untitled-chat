@@ -2,6 +2,7 @@
 
 import { Download, Camera, Sparkles, Palette, Box, Sun, Layers, Cpu } from "lucide-react"
 import { useStudio, type CardModelId, type HdrPreset, type ViewId } from "@/lib/studio-store"
+import { VIEWS } from "./camera-rig"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -192,7 +193,13 @@ export function ControlPanel() {
                       key={v}
                       size="sm"
                       variant={s.viewId === v ? "default" : "outline"}
-                      onClick={() => s.set("viewId", v)}
+                      onClick={() => {
+                        s.set("viewId", v)
+                        // If the view has an authored focal length, apply it so the preset
+                        // lands at the exact framing it was captured at.
+                        const presetFocal = VIEWS[v].focal
+                        if (presetFocal) s.set("focalLength", presetFocal)
+                      }}
                       className="h-8 text-xs"
                     >
                       {lbl}

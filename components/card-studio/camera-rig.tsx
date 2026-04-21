@@ -16,19 +16,21 @@ function focalFromFov(fovDeg: number): number {
   return FILM_GAUGE / 2 / Math.tan(fovRad / 2)
 }
 
-export const VIEWS: Record<ViewId, { pos: [number, number, number]; fov: number; zoom: number }> = {
+export const VIEWS: Record<
+  ViewId,
+  { pos: [number, number, number]; fov: number; zoom: number; focal?: number }
+> = {
   front: { pos: [0, 0, 3.2], fov: 28, zoom: 420 },
   back: { pos: [0, 0, -3.2], fov: 28, zoom: 420 },
   threeQuarterFront: { pos: [1.7, 1.2, 2.6], fov: 30, zoom: 400 },
   threeQuarterBack: { pos: [-1.7, 1.2, -2.6], fov: 30, zoom: 400 },
   top: { pos: [0, 3.4, 0.01], fov: 32, zoom: 400 },
   side: { pos: [3.4, 0, 0], fov: 28, zoom: 420 },
-  // Low-angle, sharp-oblique marketing shot (SberBank-style hero render):
-  // camera is almost on the card's plane (tiny Y), heavily to the side (large X)
-  // and only slightly in front (small Z), so the long edge recedes deep into frame.
-  // Narrow FOV (~20°) mimics a ~100mm lens — compresses perspective without
-  // wide-angle distortion and keeps the card readable at this oblique angle.
-  hero: { pos: [3.1, 0.28, 0.85], fov: 20, zoom: 560 },
+  // Captured from live telemetry (az 37.7° / el -14.4° / focal 128mm):
+  // long-lens oblique marketing shot looking down at the card from above-right.
+  // fov = 15.57° is chosen so that focalFromFov(fov) == 128mm — this makes the
+  // baseline distance match the authored `pos` exactly when focalLength == 128.
+  hero: { pos: [7.93, -3.33, 10.26], fov: 15.57, zoom: 560, focal: 128 },
 }
 
 export function CameraRig({
