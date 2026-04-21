@@ -24,6 +24,7 @@ import { GlareLayer } from "./glare-layer"
 export function CardScene() {
   const envIntensity = useStudio((s) => s.envIntensity)
   const backgroundMode = useStudio((s) => s.backgroundMode)
+  const hdrPreset = useStudio((s) => s.hdrPreset)
   const keyIntensity = useStudio((s) => s.keyIntensity)
   const fillIntensity = useStudio((s) => s.fillIntensity)
   const rimIntensity = useStudio((s) => s.rimIntensity)
@@ -134,20 +135,32 @@ export function CardScene() {
         far={100}
       />
 
-      <Environment
-        frames={1}
-        resolution={256}
-        environmentIntensity={envIntensity}
-        environmentRotation={[0, envRotationY, 0]}
-        backgroundRotation={[0, envRotationY, 0]}
-        background={backgroundMode === "hdr"}
-      >
-        <color attach="background" args={["#1a1a1a"]} />
-        <Lightformer intensity={2.4} position={[4, 5, 3]} scale={[6, 3, 1]} color="#ffffff" />
-        <Lightformer intensity={1.2} position={[-5, 3, 2]} scale={[4, 4, 1]} color="#cfe3ff" />
-        <Lightformer intensity={0.9} position={[0, -3, 4]} scale={[5, 2, 1]} color="#ffe6c8" />
-        <Lightformer intensity={1.6} position={[0, 4, -4]} scale={[5, 2, 1]} color="#e3d8ff" />
-      </Environment>
+      {hdrPreset === "studio" ? (
+        // Custom studio rig built from Lightformers — no external HDR download needed.
+        <Environment
+          frames={1}
+          resolution={256}
+          environmentIntensity={envIntensity}
+          environmentRotation={[0, envRotationY, 0]}
+          backgroundRotation={[0, envRotationY, 0]}
+          background={backgroundMode === "hdr"}
+        >
+          <color attach="background" args={["#1a1a1a"]} />
+          <Lightformer intensity={2.4} position={[4, 5, 3]} scale={[6, 3, 1]} color="#ffffff" />
+          <Lightformer intensity={1.2} position={[-5, 3, 2]} scale={[4, 4, 1]} color="#cfe3ff" />
+          <Lightformer intensity={0.9} position={[0, -3, 4]} scale={[5, 2, 1]} color="#ffe6c8" />
+          <Lightformer intensity={1.6} position={[0, 4, -4]} scale={[5, 2, 1]} color="#e3d8ff" />
+        </Environment>
+      ) : (
+        // Built-in drei HDR presets (downloaded from the drei CDN).
+        <Environment
+          preset={hdrPreset}
+          environmentIntensity={envIntensity}
+          environmentRotation={[0, envRotationY, 0]}
+          backgroundRotation={[0, envRotationY, 0]}
+          background={backgroundMode === "hdr"}
+        />
+      )}
 
       {backgroundMode === "solid" && <SolidBackground />}
 
