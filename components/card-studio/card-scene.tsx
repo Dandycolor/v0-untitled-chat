@@ -31,6 +31,7 @@ export function CardScene() {
   const rimIntensity = useStudio((s) => s.rimIntensity)
   const lightAzimuth = useStudio((s) => s.lightAzimuth)
   const lightElevation = useStudio((s) => s.lightElevation)
+  const orientation = useStudio((s) => s.orientation)
 
   // Compute key light position from azimuth/elevation so the user can rotate the highlight
   // around the card. We also rotate the HDR environment by the same azimuth so PBR reflections
@@ -116,8 +117,14 @@ export function CardScene() {
     controls.update()
   }, [focalLength, viewId, projection])
 
-  const glareW = 1.9
-  const glareH = 1.25
+  // Card body is normalized in CardModel so the long side = 1.6 world units.
+  // ISO/IEC 7810 ID-1 aspect is 85.6/53.98 ≈ 1.586, which gives a short side of ~1.009.
+  // In vertical orientation CardModel rotates the mesh 90° around Z, so width/height swap.
+  // Fit the glare plane exactly to these dimensions so it never extends past the card silhouette.
+  const glareLong = 1.6
+  const glareShort = 1.6 / (85.6 / 53.98)
+  const glareW = orientation === "vertical" ? glareShort : glareLong
+  const glareH = orientation === "vertical" ? glareLong : glareShort
 
   return (
     <>
