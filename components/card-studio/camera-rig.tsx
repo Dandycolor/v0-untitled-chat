@@ -9,6 +9,13 @@ import { useStudio, type ViewId } from "@/lib/studio-store"
  * Per-view camera positioning. `fov` is used in perspective mode,
  * `zoom` is used in orthographic mode so the card stays a similar size.
  */
+/** Convert a vertical FOV (degrees) to a 35mm-equivalent focal length (mm). */
+function focalFromFov(fovDeg: number): number {
+  const FILM_GAUGE = 35
+  const fovRad = (fovDeg * Math.PI) / 180
+  return FILM_GAUGE / 2 / Math.tan(fovRad / 2)
+}
+
 export const VIEWS: Record<ViewId, { pos: [number, number, number]; fov: number; zoom: number }> = {
   front: { pos: [0, 0, 3.2], fov: 28, zoom: 420 },
   back: { pos: [0, 0, -3.2], fov: 28, zoom: 420 },
@@ -34,14 +41,24 @@ export function CameraRig({
 
   useEffect(() => {
     const v = VIEWS[viewId]
-    desiredPos.current.set(...v.pos)
     desiredLookAt.current.copy(target)
     const persp = camera as THREE.PerspectiveCamera
     const ortho = camera as THREE.OrthographicCamera
     if ((persp as unknown as { isPerspectiveCamera?: boolean }).isPerspectiveCamera) {
-      // Use a 35mm-equivalent focal length so the slider reads like a real camera lens.
-      // Three.js derives fov from focalLength + filmGauge (defaults to 35mm).
+      // Dolly-zoom: changing focal length affects perspective distortion, not subject size.
+      // We keep the card roughly the same size on screen by scaling the camera distance
+      // proportionally to the focal length (relative to the reference focal that matches
+      // the view's authored FOV). Short focal -> camera closer -> strong perspective.
+      const refFocal = focalFromFov(v.fov)
+      const distanceScale = focalLength / refFocal
+      desiredPos.current.set(
+        v.pos[0] * distanceScale,
+        v.pos[1] * distanceScale,
+        v.pos[2] * distanceScale,
+      )
       persp.setFocalLength(focalLength)
+    } else {
+      desiredPos.current.set(...v.pos)
     }
     if ((ortho as unknown as { isOrthographicCamera?: boolean }).isOrthographicCamera) {
       ortho.zoom = v.zoom
