@@ -115,12 +115,6 @@ export function GlareLayer({
         blending={THREE.AdditiveBlending}
         depthWrite={false}
         toneMapped={false}
-        // Push the glare fragment slightly towards the camera in depth so it
-        // stays on top of the card surface even at a ~1mm offset without
-        // z-fighting. This lets us keep `position.z` tiny (visually coplanar).
-        polygonOffset
-        polygonOffsetFactor={-4}
-        polygonOffsetUnits={-4}
       />
     </mesh>
   )

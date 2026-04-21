@@ -195,14 +195,16 @@ export function CardScene() {
         <group>
           <CardModel />
           {/*
-            Glare sits right on top of the card's front face. The card's half-thickness
-            after normalization is ~0.007, so a 0.0015 offset is visually coplanar;
-            polygonOffset inside GlareLayer prevents z-fighting with the PBR surface.
+            Card is normalized so 1.6 world units ≈ 85.6 mm (≈0.0187 units/mm).
+            ISO ID-1 thickness is 0.76 mm → front face sits at z ≈ +0.0071 world units.
+            Place glare at z ≈ 0.014 (~0.35 mm above the front face) so it visually
+            hugs the surface but is safely clear of z-fighting. The back glare plane
+            mirrors the same offset via rotation-Y = π.
           */}
           <GlareLayer
             width={glareW}
             height={glareH}
-            position={[0, 0, 0.0015]}
+            position={[0, 0, 0.014]}
             rotation={[0, 0, 0]}
           />
           {glareMode === "texture" && (
@@ -210,7 +212,7 @@ export function CardScene() {
               <GlareLayer
                 width={glareW}
                 height={glareH}
-                position={[0, 0, 0.0015]}
+                position={[0, 0, 0.014]}
                 rotation={[0, 0, 0]}
               />
             </group>
