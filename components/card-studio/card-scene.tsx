@@ -29,6 +29,7 @@ export function CardScene() {
   const keyColor = useStudio((s) => s.keyColor)
   const fillIntensity = useStudio((s) => s.fillIntensity)
   const rimIntensity = useStudio((s) => s.rimIntensity)
+  const rimColor = useStudio((s) => s.rimColor)
   const lightAzimuth = useStudio((s) => s.lightAzimuth)
   const lightElevation = useStudio((s) => s.lightElevation)
   const orientation = useStudio((s) => s.orientation)
@@ -57,15 +58,27 @@ export function CardScene() {
     return [rh * Math.sin(az), y, rh * Math.cos(az)]
   }, [lightAzimuth, lightElevation])
 
-  const rimPos = useMemo<[number, number, number]>(() => {
-    // Rim light is opposite the camera/key, higher up, to outline silhouette.
-    const az = ((lightAzimuth + 180) * Math.PI) / 180
-    const el = (Math.min(80, lightElevation + 20) * Math.PI) / 180
+  // Rim is split into a symmetric backlight PAIR placed behind the card and to the
+  // sides, at a near-grazing elevation. On a flat ID-1 card a single overhead
+  // directional never wraps the silhouette — grazing back-side lights do, because
+  // they strike the rounded corners and the thin bevel at a shallow angle, which
+  // is exactly what creates a visible edge highlight on both long sides.
+  const rimPosA = useMemo<[number, number, number]>(() => {
+    const az = ((lightAzimuth + 180 - 55) * Math.PI) / 180
+    const el = (8 * Math.PI) / 180
     const r = 7
     const y = r * Math.sin(el)
     const rh = r * Math.cos(el)
     return [rh * Math.sin(az), y, rh * Math.cos(az)]
-  }, [lightAzimuth, lightElevation])
+  }, [lightAzimuth])
+  const rimPosB = useMemo<[number, number, number]>(() => {
+    const az = ((lightAzimuth + 180 + 55) * Math.PI) / 180
+    const el = (8 * Math.PI) / 180
+    const r = 7
+    const y = r * Math.sin(el)
+    const rh = r * Math.cos(el)
+    return [rh * Math.sin(az), y, rh * Math.cos(az)]
+  }, [lightAzimuth])
 
   const envRotationY = (lightAzimuth * Math.PI) / 180
   const viewId = useStudio((s) => s.viewId)
@@ -188,7 +201,15 @@ export function CardScene() {
 
       <directionalLight position={keyPos} intensity={keyIntensity} color={keyColor} />
       <directionalLight position={fillPos} intensity={fillIntensity} />
-      <directionalLight position={rimPos} intensity={rimIntensity} color={"#b8d0ff"} />
+      {/*
+        Rim pair: two grazing backlights ~55° either side of the anti-key azimuth,
+        at a low elevation (~8°). This wraps light around both rounded corners and
+        the thin bevel instead of hitting the flat back (which a single overhead
+        rim would do). The user-controlled rimIntensity is split across both so
+        `Rim light = 1` stays comparable in total energy to the previous single-light.
+      */}
+      <directionalLight position={rimPosA} intensity={rimIntensity * 0.6} color={rimColor} />
+      <directionalLight position={rimPosB} intensity={rimIntensity * 0.6} color={rimColor} />
       <ambientLight intensity={0.12} />
 
       <Suspense fallback={null}>

@@ -609,9 +609,25 @@ export function ControlPanel() {
                 label="Rim light"
                 value={s.rimIntensity}
                 min={0}
-                max={3}
+                max={8}
+                step={0.01}
                 onChange={(v) => s.set("rimIntensity", v)}
               />
+              <Row label="Rim color">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="color"
+                    value={s.rimColor}
+                    onChange={(e) => s.set("rimColor", e.target.value)}
+                    className="h-8 w-14 p-1"
+                  />
+                  <Input
+                    value={s.rimColor}
+                    onChange={(e) => s.set("rimColor", e.target.value)}
+                    className="h-8 flex-1 font-mono text-xs"
+                  />
+                </div>
+              </Row>
               <div className="h-px bg-border" />
               <p className="text-xs text-muted-foreground">
                 Rotate the main light around the card. Affects both the direct highlight and HDR reflections.
