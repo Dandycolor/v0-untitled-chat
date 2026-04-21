@@ -49,7 +49,8 @@ function ensurePlanarUv(mesh: THREE.Mesh, sideAxis: 0 | 1 | 2) {
       const a0 = (pos.getComponent(i, axes[0]) - bbox.min.getComponent(axes[0])) / (size.getComponent(axes[0]) || 1)
       const a1 = (pos.getComponent(i, axes[1]) - bbox.min.getComponent(axes[1])) / (size.getComponent(axes[1]) || 1)
       u[i * 2] = a0
-      u[i * 2 + 1] = a1
+      // Flip V so uploaded textures read top-down as authored in image editors.
+      u[i * 2 + 1] = 1 - a1
     }
     geo.setAttribute("uv", new THREE.BufferAttribute(u, 2))
   }
