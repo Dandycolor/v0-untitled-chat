@@ -2,7 +2,6 @@
 
 import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import * as THREE from "three"
-import { EffectComposer, SMAA } from "@react-three/postprocessing"
 import {
   Environment,
   Lightformer,
@@ -218,8 +217,6 @@ export function CardScene() {
 
       <CameraRig target={target} enabled={rigEnabled} />
 
-      <SceneAntialiasing />
-
       <OrbitControls
         ref={controlsRef}
         makeDefault
@@ -239,31 +236,6 @@ export function CardScene() {
 function SolidBackground() {
   const color = useStudio((s) => s.backgroundColor)
   return <color attach="background" args={[color]} />
-}
-
-/**
- * Screen-space antialiasing. We wrap SMAA in an error boundary + Suspense so that
- * if the postprocessing bundle fails to load (rare, but keeps the studio alive),
- * the scene still renders with just the GL's built-in MSAA.
- */
-function SceneAntialiasing() {
-  return (
-    <EnvironmentErrorBoundary fallback={null}>
-      <Suspense fallback={null}>
-        <AntialiasPass />
-      </Suspense>
-    </EnvironmentErrorBoundary>
-  )
-}
-
-function AntialiasPass() {
-  // multisampling=0 -> use the default framebuffer, which already has MSAA from Canvas gl.antialias.
-  // SMAA then cleans up subpixel edges that MSAA misses (especially on rounded silhouettes).
-  return (
-    <EffectComposer multisampling={0} enableNormalPass={false}>
-      <SMAA />
-    </EffectComposer>
-  )
 }
 
 /**

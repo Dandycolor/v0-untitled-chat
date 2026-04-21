@@ -19,11 +19,16 @@ export function CardCanvas() {
     <Canvas
       // Allow up to 3x DPR so aliasing is reduced on high-DPI displays; the min stays at 1.
       dpr={[1, 3]}
+      // R3F-level MSAA on its internal WebGL2 multisample render target.
+      // 8 samples gives smooth silhouette edges on the card's rounded corners and
+      // logo/chip outlines with modest GPU cost. This replaces the postprocessing
+      // SMAA pass which was incompatible with React 19 / R3F 9.
       gl={{
         antialias: true,
         alpha: true,
         preserveDrawingBuffer: true,
         powerPreference: "high-performance",
+        samples: 8,
       }}
       style={{
         background:
