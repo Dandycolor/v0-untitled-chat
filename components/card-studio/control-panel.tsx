@@ -1,6 +1,6 @@
 "use client"
 
-import { Download, Camera, Sparkles, Palette, Box, Sun, Layers, Cpu, Rainbow } from "lucide-react"
+import { Download, Camera, Sparkles, Palette, Box, Sun, Layers, Cpu, Rainbow, Star } from "lucide-react"
 import { useStudio, type CardModelId, type HdrPreset, type ViewId } from "@/lib/studio-store"
 import { VIEWS } from "./camera-rig"
 import { Slider } from "@/components/ui/slider"
@@ -406,6 +406,65 @@ export function ControlPanel() {
                   />
                   <p className="text-xs text-muted-foreground">
                     View-dependent iridescent rainbow, like a holographic sticker. Reacts to camera angle.
+                  </p>
+                </>
+              )}
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="foil" className="border-b">
+            <SectionTrigger icon={<Star className="size-3.5" />} title="Foil & sparkle" />
+            <AccordionContent className="space-y-4 px-4 pb-4">
+              <Row label="Enable">
+                <Switch
+                  checked={s.foilEnabled}
+                  onCheckedChange={(v) => s.set("foilEnabled", v)}
+                />
+              </Row>
+              {s.foilEnabled && (
+                <>
+                  <NumSlider
+                    label="Sheen"
+                    value={s.foilSheen}
+                    min={0}
+                    max={2}
+                    step={0.01}
+                    onChange={(v) => s.set("foilSheen", v)}
+                  />
+                  <NumSlider
+                    label="Sparkle"
+                    value={s.foilSparkle}
+                    min={0}
+                    max={3}
+                    step={0.01}
+                    onChange={(v) => s.set("foilSparkle", v)}
+                  />
+                  <NumSlider
+                    label="Sparkle density"
+                    value={s.foilDensity}
+                    min={20}
+                    max={200}
+                    step={1}
+                    onChange={(v) => s.set("foilDensity", v)}
+                    format={(v) => v.toFixed(0)}
+                  />
+                  <Row label="Sheen tint">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="color"
+                        value={s.foilTint}
+                        onChange={(e) => s.set("foilTint", e.target.value)}
+                        className="h-8 w-14 p-1"
+                      />
+                      <Input
+                        value={s.foilTint}
+                        onChange={(e) => s.set("foilTint", e.target.value)}
+                        className="h-8 flex-1 font-mono text-xs"
+                      />
+                    </div>
+                  </Row>
+                  <p className="text-xs text-muted-foreground">
+                    Moving pearlescent blob plus view-dependent sparkle stars. Tilt the card to watch stars pop in and out.
                   </p>
                 </>
               )}

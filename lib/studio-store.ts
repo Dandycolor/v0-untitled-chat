@@ -103,6 +103,17 @@ export type StudioState = {
   /** Static rotation of the color wheel in [0..1] (maps to 0..360°). */
   holoHueShift: number
 
+  // Foil / glitter (MTG-style sheen blob + view-dependent sparkle stars)
+  foilEnabled: boolean
+  /** Brightness of the moving pearlescent blob (0..2). */
+  foilSheen: number
+  /** Brightness of individual sparkle stars (0..3). */
+  foilSparkle: number
+  /** Grid density of sparkles — higher = more, finer stars. */
+  foilDensity: number
+  /** Hex color the sheen blob is tinted with. Sparkles stay white. */
+  foilTint: string
+
   // Logo
   showLogo: boolean
   logoScale: number
@@ -197,6 +208,12 @@ export const useStudio = create<StudioState>((set) => ({
   holoIntensity: 0.9,
   holoScale: 6,
   holoHueShift: 0,
+
+  foilEnabled: false,
+  foilSheen: 0.8,
+  foilSparkle: 1.4,
+  foilDensity: 80,
+  foilTint: "#fff4cc",
   glareWidth: 0.35,
   glareSoftness: 0.4,
 

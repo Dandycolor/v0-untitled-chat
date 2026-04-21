@@ -16,6 +16,7 @@ import { CardModel } from "./card-model"
 import { CameraRig, VIEWS } from "./camera-rig"
 import { GlareLayer } from "./glare-layer"
 import { HoloLayer } from "./holo-layer"
+import { FoilLayer } from "./foil-layer"
 
 /**
  * Scene contents live here. The environment is built from <Lightformer> meshes
@@ -38,6 +39,11 @@ export function CardScene() {
   const holoIntensity = useStudio((s) => s.holoIntensity)
   const holoScale = useStudio((s) => s.holoScale)
   const holoHueShift = useStudio((s) => s.holoHueShift)
+  const foilEnabled = useStudio((s) => s.foilEnabled)
+  const foilSheen = useStudio((s) => s.foilSheen)
+  const foilSparkle = useStudio((s) => s.foilSparkle)
+  const foilDensity = useStudio((s) => s.foilDensity)
+  const foilTint = useStudio((s) => s.foilTint)
 
   // Compute key light position from azimuth/elevation so the user can rotate the highlight
   // around the card. We also rotate the HDR environment by the same azimuth so PBR reflections
@@ -274,6 +280,35 @@ export function CardScene() {
                   intensity={holoIntensity}
                   scale={holoScale}
                   hueShift={holoHueShift}
+                />
+              </group>
+            </>
+          )}
+
+          {/*
+            Foil shine (MTG-style): placed slightly above holo so sparkles sit
+            on top of rainbow bands when both effects are on. Mirrored to the back.
+          */}
+          {foilEnabled && (
+            <>
+              <FoilLayer
+                width={glareW}
+                height={glareH}
+                position={[0, 0, 0.018]}
+                sheen={foilSheen}
+                sparkle={foilSparkle}
+                density={foilDensity}
+                tintColor={foilTint}
+              />
+              <group rotation={[0, Math.PI, 0]}>
+                <FoilLayer
+                  width={glareW}
+                  height={glareH}
+                  position={[0, 0, 0.018]}
+                  sheen={foilSheen}
+                  sparkle={foilSparkle}
+                  density={foilDensity}
+                  tintColor={foilTint}
                 />
               </group>
             </>
