@@ -27,17 +27,55 @@ type AnalyzedMesh = {
   role: "body" | "chip" | "other"
 }
 
+/**
+ * Generates a planar UV projection for a mesh based on its bounding box.
+ * Maps the two "long" axes (everything except `sideAxis`) to [0, 1] UV space.
+ * Also writes uv1 so aoMap/lightMap work even when the GLB lacks a second UV set.
+ */
+function ensurePlanarUv(mesh: THREE.Mesh, sideAxis: 0 | 1 | 2) {
+  const geo = mesh.geometry
+  geo.computeBoundingBox()
+  const bbox = geo.boundingBox!
+  const size = new THREE.Vector3()
+  bbox.getSize(size)
+  const axes = [0, 1, 2].filter((i) => i !== sideAxis) as [number, number]
+  const pos = geo.attributes.position
+  if (!pos) return
+
+  const hasUv = !!geo.attributes.uv
+  if (!hasUv) {
+    const u = new Float32Array(pos.count * 2)
+    for (let i = 0; i < pos.count; i++) {
+      const a0 = (pos.getComponent(i, axes[0]) - bbox.min.getComponent(axes[0])) / (size.getComponent(axes[0]) || 1)
+      const a1 = (pos.getComponent(i, axes[1]) - bbox.min.getComponent(axes[1])) / (size.getComponent(axes[1]) || 1)
+      u[i * 2] = a0
+      u[i * 2 + 1] = a1
+    }
+    geo.setAttribute("uv", new THREE.BufferAttribute(u, 2))
+  }
+  // Duplicate uv into uv1 (which Three.js reads as aoMap/lightMap UVs in r152+).
+  if (!geo.attributes.uv1 && geo.attributes.uv) {
+    geo.setAttribute("uv1", geo.attributes.uv)
+  }
+}
+
 function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAxis: 0 | 1 | 2 } {
   const meshes: THREE.Mesh[] = []
   root.traverse((o) => {
     if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh)
   })
 
+  // Use root-local coordinates (pre-root-scale) so the bbox is deterministic across rerenders.
+  // We bake each mesh's local matrix relative to the GLTF root, but skip the root's own transform.
   const entries: AnalyzedMesh[] = meshes.map((m) => {
     m.geometry.computeBoundingBox()
     const bbox = m.geometry.boundingBox!.clone()
-    // Account for mesh world transform relative to root
-    bbox.applyMatrix4(m.matrixWorld)
+    const rel = new THREE.Matrix4().copy(m.matrixWorld)
+    if (root.matrixWorld) {
+      const rootInv = new THREE.Matrix4().copy(root.matrixWorld).invert()
+      rel.premultiply(rootInv)
+    }
+    bbox.applyMatrix4(rel)
     const size = new THREE.Vector3()
     bbox.getSize(size)
     const volume = Math.max(size.x * size.y * size.z, 1e-8)
@@ -64,6 +102,9 @@ function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAx
     const withinFootprint = body.bbox.containsBox(e.bbox) || body.bbox.intersectsBox(e.bbox)
     if (smallerVolume && withinFootprint) e.role = "chip"
   }
+
+  // Ensure the body mesh has planar UVs so PBR textures map correctly.
+  ensurePlanarUv(body.mesh, sideAxis)
 
   return { analyzed: entries, sideAxis }
 }

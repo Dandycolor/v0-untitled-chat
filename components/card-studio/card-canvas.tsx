@@ -1,7 +1,7 @@
 "use client"
 
 import { Canvas, useThree } from "@react-three/fiber"
-import { useEffect, useRef } from "react"
+import { useEffect } from "react"
 import * as THREE from "three"
 import { useStudio } from "@/lib/studio-store"
 import { CardScene } from "./card-scene"
@@ -13,23 +13,6 @@ import { captureScene } from "./capture"
  */
 export function CardCanvas() {
   const backgroundMode = useStudio((s) => s.backgroundMode)
-  const glRef = useRef<THREE.WebGLRenderer | null>(null)
-  const sceneRef = useRef<THREE.Scene | null>(null)
-  const cameraRef = useRef<THREE.Camera | null>(null)
-
-  useEffect(() => {
-    ;(window as unknown as { __captureCard?: () => void }).__captureCard = () => {
-      const { captureTransparent, captureSize } = useStudio.getState()
-      if (!glRef.current || !sceneRef.current || !cameraRef.current) return
-      captureScene(glRef.current, sceneRef.current, cameraRef.current, {
-        transparent: captureTransparent,
-        size: captureSize,
-      })
-    }
-    return () => {
-      delete (window as unknown as { __captureCard?: () => void }).__captureCard
-    }
-  }, [])
 
   return (
     <Canvas
@@ -49,26 +32,45 @@ export function CardCanvas() {
               ? "radial-gradient(ellipse at center, oklch(0.22 0 0) 0%, oklch(0.08 0 0) 70%)"
               : undefined,
       }}
-      onCreated={({ gl, scene, camera }) => {
-        glRef.current = gl
-        sceneRef.current = scene
-        cameraRef.current = camera
+      onCreated={({ gl }) => {
         gl.toneMapping = THREE.ACESFilmicToneMapping
         gl.toneMappingExposure = useStudio.getState().exposure
       }}
     >
-      <ToneMappingUpdater glRef={glRef} />
+      <ToneMappingBinding />
+      <CaptureBinding />
       <CardScene />
     </Canvas>
   )
 }
 
-function ToneMappingUpdater({ glRef }: { glRef: React.MutableRefObject<THREE.WebGLRenderer | null> }) {
-  const exposure = useStudio((s) => s.exposure)
+/** Keeps renderer exposure synced with the store. */
+function ToneMappingBinding() {
   const gl = useThree((s) => s.gl)
+  const exposure = useStudio((s) => s.exposure)
   useEffect(() => {
-    if (glRef.current !== gl) glRef.current = gl
     gl.toneMappingExposure = exposure
-  }, [gl, exposure, glRef])
+  }, [gl, exposure])
+  return null
+}
+
+/** Wires the capture function to window so the sidebar button can call it. */
+function CaptureBinding() {
+  const gl = useThree((s) => s.gl)
+  const scene = useThree((s) => s.scene)
+  const camera = useThree((s) => s.camera)
+  useEffect(() => {
+    const w = window as unknown as { __captureCard?: () => void }
+    w.__captureCard = () => {
+      const { captureTransparent, captureSize } = useStudio.getState()
+      captureScene(gl, scene, camera, {
+        transparent: captureTransparent,
+        size: captureSize,
+      })
+    }
+    return () => {
+      delete w.__captureCard
+    }
+  }, [gl, scene, camera])
   return null
 }

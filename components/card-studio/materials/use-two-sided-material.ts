@@ -106,6 +106,10 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     mat.aoMap = frontAo.tex
     mat.normalScale = new THREE.Vector2(normalScale, normalScale)
 
+    // Ensure Three's shader program cache never returns a stale blended program.
+    const cacheKey = `card-two-sided-${sideAxis}`
+    mat.customProgramCacheKey = () => cacheKey
+
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uFrontAlbedo = { value: frontAlbedo.tex }
       shader.uniforms.uBackAlbedo = { value: backAlbedo.tex }
