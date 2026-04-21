@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react"
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import * as THREE from "three"
 import {
   Environment,
@@ -136,30 +136,44 @@ export function CardScene() {
       />
 
       {hdrPreset === "studio" ? (
-        // Custom studio rig built from Lightformers — no external HDR download needed.
-        <Environment
-          frames={1}
-          resolution={256}
-          environmentIntensity={envIntensity}
-          environmentRotation={[0, envRotationY, 0]}
-          backgroundRotation={[0, envRotationY, 0]}
-          background={backgroundMode === "hdr"}
-        >
-          <color attach="background" args={["#1a1a1a"]} />
-          <Lightformer intensity={2.4} position={[4, 5, 3]} scale={[6, 3, 1]} color="#ffffff" />
-          <Lightformer intensity={1.2} position={[-5, 3, 2]} scale={[4, 4, 1]} color="#cfe3ff" />
-          <Lightformer intensity={0.9} position={[0, -3, 4]} scale={[5, 2, 1]} color="#ffe6c8" />
-          <Lightformer intensity={1.6} position={[0, 4, -4]} scale={[5, 2, 1]} color="#e3d8ff" />
-        </Environment>
-      ) : (
-        // Built-in drei HDR presets (downloaded from the drei CDN).
-        <Environment
-          preset={hdrPreset}
-          environmentIntensity={envIntensity}
-          environmentRotation={[0, envRotationY, 0]}
-          backgroundRotation={[0, envRotationY, 0]}
+        <StudioEnvironment
+          envIntensity={envIntensity}
+          envRotationY={envRotationY}
           background={backgroundMode === "hdr"}
         />
+      ) : (
+        // Built-in drei HDR presets are downloaded from a CDN. Wrap in Suspense so the
+        // tree doesn't block the whole <Canvas> while the HDR streams in, and in an
+        // ErrorBoundary so a CDN failure falls back to the built-in studio rig instead
+        // of killing the WebGL context.
+        <EnvironmentErrorBoundary
+          fallback={
+            <StudioEnvironment
+              envIntensity={envIntensity}
+              envRotationY={envRotationY}
+              background={backgroundMode === "hdr"}
+            />
+          }
+        >
+          <Suspense
+            fallback={
+              <StudioEnvironment
+                envIntensity={envIntensity}
+                envRotationY={envRotationY}
+                background={backgroundMode === "hdr"}
+              />
+            }
+          >
+            <Environment
+              key={hdrPreset}
+              preset={hdrPreset}
+              environmentIntensity={envIntensity}
+              environmentRotation={[0, envRotationY, 0]}
+              backgroundRotation={[0, envRotationY, 0]}
+              background={backgroundMode === "hdr"}
+            />
+          </Suspense>
+        </EnvironmentErrorBoundary>
       )}
 
       {backgroundMode === "solid" && <SolidBackground />}
@@ -221,4 +235,63 @@ export function CardScene() {
 function SolidBackground() {
   const color = useStudio((s) => s.backgroundColor)
   return <color attach="background" args={[color]} />
+}
+
+/**
+ * Custom studio lighting rig built from Lightformers — no external HDR download.
+ * Used as the "studio" preset and as the Suspense/ErrorBoundary fallback for CDN
+ * presets when they can't be reached.
+ */
+function StudioEnvironment({
+  envIntensity,
+  envRotationY,
+  background,
+}: {
+  envIntensity: number
+  envRotationY: number
+  background: boolean
+}) {
+  return (
+    <Environment
+      frames={1}
+      resolution={256}
+      environmentIntensity={envIntensity}
+      environmentRotation={[0, envRotationY, 0]}
+      backgroundRotation={[0, envRotationY, 0]}
+      background={background}
+    >
+      <color attach="background" args={["#1a1a1a"]} />
+      <Lightformer intensity={2.4} position={[4, 5, 3]} scale={[6, 3, 1]} color="#ffffff" />
+      <Lightformer intensity={1.2} position={[-5, 3, 2]} scale={[4, 4, 1]} color="#cfe3ff" />
+      <Lightformer intensity={0.9} position={[0, -3, 4]} scale={[5, 2, 1]} color="#ffe6c8" />
+      <Lightformer intensity={1.6} position={[0, 4, -4]} scale={[5, 2, 1]} color="#e3d8ff" />
+    </Environment>
+  )
+}
+
+/**
+ * Scene-internal error boundary. If the drei HDR preset fails to load (network
+ * error, CDN 404), we render the provided fallback instead of letting the error
+ * unwind past <Canvas> and destroy the WebGL context.
+ */
+class EnvironmentErrorBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false }
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+  componentDidCatch(err: unknown) {
+    console.warn("[v0] HDR preset failed, using studio fallback:", err)
+  }
+  // Reset error state when the preset (children) changes so a new pick gets a fresh try.
+  componentDidUpdate(prev: { children: ReactNode }) {
+    if (this.state.hasError && prev.children !== this.props.children) {
+      this.setState({ hasError: false })
+    }
+  }
+  render() {
+    return this.state.hasError ? this.props.fallback : this.props.children
+  }
 }
