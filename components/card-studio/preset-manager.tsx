@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import { Check, Loader2, Plus, Trash2, Upload } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Check, Image as ImageIcon, Loader2, Plus, Trash2, Upload, X } from "lucide-react"
 import { useStudio, type DesignPreset } from "@/lib/studio-store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,6 +27,9 @@ const CHANNELS = [
   { key: "height", label: "Height" },
   { key: "orm", label: "ORM (packed)" },
 ] as const
+
+type ChannelKey = (typeof CHANNELS)[number]["key"]
+type SideFiles = Partial<Record<ChannelKey, File>>
 
 export function PresetManager() {
   const presets = useStudio((s) => s.presets)
@@ -131,23 +134,41 @@ function UploadPresetDialog({ onUploaded }: { onUploaded: () => void }) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [uploading, setUploading] = useState(false)
-  const formRef = useRef<HTMLFormElement>(null)
+  const [front, setFront] = useState<SideFiles>({})
+  const [back, setBack] = useState<SideFiles>({})
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    if (!formRef.current) return
-    const fd = new FormData(formRef.current)
-    fd.set("name", name || "Untitled")
+  const totalCount = Object.keys(front).length + Object.keys(back).length
+
+  const reset = () => {
+    setName("")
+    setFront({})
+    setBack({})
+  }
+
+  const handleSubmit = async () => {
+    if (!name.trim()) {
+      toast.error("Enter a preset name")
+      return
+    }
+    if (totalCount === 0) {
+      toast.error("Select at least one texture")
+      return
+    }
+    const fd = new FormData()
+    fd.set("name", name.trim())
+    for (const [k, f] of Object.entries(front)) if (f) fd.set(`front_${k}`, f, f.name)
+    for (const [k, f] of Object.entries(back)) if (f) fd.set(`back_${k}`, f, f.name)
+
     setUploading(true)
     try {
       const r = await fetch("/api/presets", { method: "POST", body: fd })
-      if (!r.ok) throw new Error("upload failed")
+      if (!r.ok) throw new Error(String(r.status))
       toast.success("Preset saved")
       setOpen(false)
-      setName("")
-      formRef.current.reset()
+      reset()
       onUploaded()
-    } catch {
+    } catch (err) {
+      console.error("[v0] preset upload error:", err)
       toast.error("Failed to upload preset")
     } finally {
       setUploading(false)
@@ -155,82 +176,189 @@ function UploadPresetDialog({ onUploaded }: { onUploaded: () => void }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v)
+        if (!v) reset()
+      }}
+    >
       <DialogTrigger asChild>
         <Button size="sm" variant="outline" className="h-7 gap-1 bg-transparent">
           <Plus className="size-3.5" /> New
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
-        <form ref={formRef} onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>Upload PBR preset</DialogTitle>
-            <DialogDescription>
-              Upload individual channel maps for the front and back of the card. Any channel can be left
-              empty — the studio falls back to neutral values.
-            </DialogDescription>
-          </DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Upload PBR preset</DialogTitle>
+          <DialogDescription>
+            Upload individual channel maps for the front and back of the card. Any channel can be left
+            empty — the studio falls back to neutral values.
+          </DialogDescription>
+        </DialogHeader>
 
-          <div className="mt-4 grid gap-4">
-            <div className="grid gap-1.5">
-              <Label htmlFor="preset-name">Preset name</Label>
-              <Input
-                id="preset-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Midnight Steel"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <SidePanel side="front" label="Front" />
-              <SidePanel side="back" label="Back" />
-            </div>
+        <div className="mt-4 grid gap-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor="preset-name">Preset name</Label>
+            <Input
+              id="preset-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Midnight Steel"
+              required
+            />
           </div>
 
-          <DialogFooter className="mt-6">
-            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={uploading}>
-              {uploading ? (
-                <>
-                  <Loader2 className="mr-1.5 size-3.5 animate-spin" /> Uploading…
-                </>
-              ) : (
-                "Save preset"
-              )}
-            </Button>
-          </DialogFooter>
-        </form>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <SidePanel label="Front" side="front" files={front} onChange={setFront} />
+            <SidePanel label="Back" side="back" files={back} onChange={setBack} />
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            {totalCount > 0
+              ? `${totalCount} file${totalCount === 1 ? "" : "s"} ready to upload.`
+              : "No files selected yet."}
+          </p>
+        </div>
+
+        <DialogFooter className="mt-6">
+          <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={uploading}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={handleSubmit} disabled={uploading || totalCount === 0}>
+            {uploading ? (
+              <>
+                <Loader2 className="mr-1.5 size-3.5 animate-spin" /> Uploading…
+              </>
+            ) : (
+              "Save preset"
+            )}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
 
-function SidePanel({ side, label }: { side: "front" | "back"; label: string }) {
+function SidePanel({
+  label,
+  side,
+  files,
+  onChange,
+}: {
+  label: string
+  side: "front" | "back"
+  files: SideFiles
+  onChange: (next: SideFiles) => void
+}) {
   return (
     <div className="rounded-md border bg-muted/30 p-3">
       <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
-      <div className="grid grid-cols-1 gap-2">
+      <div className="flex flex-col gap-2">
         {CHANNELS.map((c) => (
-          <div key={c.key} className="grid grid-cols-[5rem_1fr] items-center gap-2">
-            <Label htmlFor={`${side}_${c.key}`} className="text-xs">
-              {c.label}
-            </Label>
-            <Input
-              id={`${side}_${c.key}`}
-              name={`${side}_${c.key}`}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="h-8 text-xs file:text-xs"
-            />
-          </div>
+          <ChannelRow
+            key={c.key}
+            id={`${side}_${c.key}`}
+            label={c.label}
+            file={files[c.key]}
+            onFile={(f) => {
+              const next = { ...files }
+              if (f) next[c.key] = f
+              else delete next[c.key]
+              onChange(next)
+            }}
+          />
         ))}
       </div>
     </div>
   )
+}
+
+function ChannelRow({
+  id,
+  label,
+  file,
+  onFile,
+}: {
+  id: string
+  label: string
+  file: File | undefined
+  onFile: (f: File | null) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const previewUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file])
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+    }
+  }, [previewUrl])
+
+  return (
+    <div className="flex items-center gap-2">
+      <Label htmlFor={id} className="w-20 shrink-0 text-xs">
+        {label}
+      </Label>
+
+      <input
+        ref={inputRef}
+        id={id}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          onFile(f ?? null)
+          // reset native value so picking the same file twice re-triggers onChange
+          e.target.value = ""
+        }}
+      />
+
+      {file ? (
+        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-2 py-1">
+          <div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded border bg-muted">
+            {previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={previewUrl} alt="" className="size-full object-cover" />
+            ) : (
+              <ImageIcon className="size-3.5 text-muted-foreground" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-xs font-medium">{file.name}</div>
+            <div className="text-[10px] text-muted-foreground">{formatSize(file.size)}</div>
+          </div>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="size-6 shrink-0"
+            onClick={() => onFile(null)}
+            aria-label={`Remove ${label}`}
+          >
+            <X className="size-3.5" />
+          </Button>
+        </div>
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 flex-1 justify-start gap-1.5 bg-background font-normal text-muted-foreground"
+          onClick={() => inputRef.current?.click()}
+        >
+          <Upload className="size-3.5" />
+          Choose file…
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
