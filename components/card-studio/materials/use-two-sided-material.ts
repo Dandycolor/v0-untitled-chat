@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import * as THREE from "three"
 import { resolveTextureUrl } from "@/lib/texture-url"
 import type { PbrMapSet } from "@/lib/studio-store"
@@ -19,6 +19,10 @@ type Params = {
   flipH: boolean
   /** Mirror all textures vertically (applies to both sides). */
   flipV: boolean
+  /** Hex color used to tint the thin side bevel of the card. */
+  edgeColor: string
+  /** 0..1 — mixes `edgeColor` into the card's diffuse near perpendicular faces. */
+  edgeTint: number
   }
 
 // Module-level 1x1 neutral textures. Created lazily once the client is running.
@@ -111,6 +115,8 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     sideAxis,
     flipH,
     flipV,
+    edgeColor,
+    edgeTint,
   } = params
 
   const frontAlbedo = useMaybeTexture(front.albedo, THREE.SRGBColorSpace)
@@ -123,6 +129,14 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
   const backMetal = useMaybeTexture(back.metallic ?? back.orm, THREE.NoColorSpace)
   const frontAo = useMaybeTexture(front.ao ?? front.orm, THREE.NoColorSpace)
   const backAo = useMaybeTexture(back.ao ?? back.orm, THREE.NoColorSpace)
+
+  // Live handles to the shader uniforms for edge color + tint, populated inside
+  // onBeforeCompile and updated from a separate useEffect to avoid recompiling the
+  // shader every time the user drags the slider or picks a new color.
+  const edgeUniformsRef = useRef<{
+    color: { value: THREE.Color }
+    tint: { value: number }
+  } | null>(null)
 
   const material = useMemo(() => {
     const mat = new THREE.MeshPhysicalMaterial({})
@@ -149,6 +163,13 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
       shader.uniforms.uFrontAo = { value: frontAo.tex }
       shader.uniforms.uBackAo = { value: backAo.tex }
       shader.uniforms.uSideAxis = { value: sideAxis }
+      // Edge tint: uniform references that we live-update from outside the shader closure
+      // so changing the color / tint slider doesn't force a shader recompile.
+      const edgeColorUniform = { value: new THREE.Color(edgeColor) }
+      const edgeTintUniform = { value: edgeTint }
+      shader.uniforms.uEdgeColor = edgeColorUniform
+      shader.uniforms.uEdgeTint = edgeTintUniform
+      edgeUniformsRef.current = { color: edgeColorUniform, tint: edgeTintUniform }
 
       // --- Vertex: export object-local normal
       shader.vertexShader = shader.vertexShader.replace(
@@ -176,9 +197,18 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         uniform sampler2D uFrontAo;
         uniform sampler2D uBackAo;
         uniform int uSideAxis;
+        uniform vec3 uEdgeColor;
+        uniform float uEdgeTint;
         float cs_sideBlend() {
           float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
           return smoothstep(-0.2, 0.2, c);
+        }
+        // Mask that is 1 on the thin side bevel (normal perpendicular to sideAxis)
+        // and 0 on the front/back faces. smoothstep band keeps the transition soft
+        // enough to hide chip geometry aliasing on the corner radius.
+        float cs_edgeMask() {
+          float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
+          return 1.0 - smoothstep(0.05, 0.35, abs(c));
         }`,
       )
 
@@ -191,6 +221,9 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
           vec4 sampledBack = texture2D(uBackAlbedo, vMapUv);
           vec4 sampledDiffuseColor = mix(sampledBack, sampledFront, csBmap);
           diffuseColor *= sampledDiffuseColor;
+          // Edge recolor: on the thin side bevel fade towards the solid edge color.
+          float edgeMask = cs_edgeMask() * uEdgeTint;
+          diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeColor, edgeMask);
         #endif`,
       )
 
@@ -286,6 +319,17 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     frontAo.tex,
     backAo.tex,
   ])
+
+  // Edge tint is driven through the shader uniforms stored in `edgeUniformsRef`.
+  // onBeforeCompile populates that ref the first time the material is rendered.
+  // Before that happens (e.g. first frame), the ref is null and we simply skip;
+  // the shader gets the correct value from the closure on initial compile.
+  useEffect(() => {
+    const u = edgeUniformsRef.current
+    if (!u) return
+    u.color.value.set(edgeColor)
+    u.tint.value = edgeTint
+  }, [edgeColor, edgeTint])
 
   // Apply live scalar params every render — Three's WebGLMaterials reads these
   // plain properties on each frame, so updates are picked up without shader recompile.

@@ -74,6 +74,10 @@ export type StudioState = {
   cardNormalScale: number
   cardClearcoat: number
   cardClearcoatRoughness: number
+  /** Hex color used to tint the thin side bevel of the card. */
+  cardEdgeColor: string
+  /** 0..1 — how strongly the edge color overrides the PBR side shading. */
+  cardEdgeTint: number
 
   // Chip shader
   chipColor: string
@@ -164,6 +168,8 @@ export const useStudio = create<StudioState>((set) => ({
   cardNormalScale: 0.16,
   cardClearcoat: 0.92,
   cardClearcoatRoughness: 0.29,
+  cardEdgeColor: "#111111",
+  cardEdgeTint: 0,
 
   chipColor: "#ababab",
   chipMetalness: 1,

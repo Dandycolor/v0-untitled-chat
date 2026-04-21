@@ -120,6 +120,8 @@ export function CardModel() {
   const cardNormalScale = useStudio((s) => s.cardNormalScale)
   const cardClearcoat = useStudio((s) => s.cardClearcoat)
   const cardClearcoatRoughness = useStudio((s) => s.cardClearcoatRoughness)
+  const cardEdgeColor = useStudio((s) => s.cardEdgeColor)
+  const cardEdgeTint = useStudio((s) => s.cardEdgeTint)
   const chipColor = useStudio((s) => s.chipColor)
   const chipMetalness = useStudio((s) => s.chipMetalness)
   const chipRoughness = useStudio((s) => s.chipRoughness)
@@ -173,6 +175,8 @@ export function CardModel() {
   sideAxis,
   flipH: textureFlipH,
   flipV: textureFlipV,
+  edgeColor: cardEdgeColor,
+  edgeTint: cardEdgeTint,
   })
 
   const chipMaterial = useChipMaterial({

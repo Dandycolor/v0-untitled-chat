@@ -280,6 +280,29 @@ export function ControlPanel() {
                 max={1}
                 onChange={(v) => s.set("cardClearcoatRoughness", v)}
               />
+              <NumSlider
+                label="Edge tint"
+                value={s.cardEdgeTint}
+                min={0}
+                max={1}
+                step={0.01}
+                onChange={(v) => s.set("cardEdgeTint", v)}
+              />
+              <Row label="Edge color">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="color"
+                    value={s.cardEdgeColor}
+                    onChange={(e) => s.set("cardEdgeColor", e.target.value)}
+                    className="h-8 w-14 p-1"
+                  />
+                  <Input
+                    value={s.cardEdgeColor}
+                    onChange={(e) => s.set("cardEdgeColor", e.target.value)}
+                    className="h-8 flex-1 font-mono text-xs"
+                  />
+                </div>
+              </Row>
             </AccordionContent>
           </AccordionItem>
 
