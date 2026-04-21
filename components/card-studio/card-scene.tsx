@@ -27,6 +27,44 @@ export function CardScene() {
   const keyIntensity = useStudio((s) => s.keyIntensity)
   const fillIntensity = useStudio((s) => s.fillIntensity)
   const rimIntensity = useStudio((s) => s.rimIntensity)
+  const lightAzimuth = useStudio((s) => s.lightAzimuth)
+  const lightElevation = useStudio((s) => s.lightElevation)
+
+  // Compute key light position from azimuth/elevation so the user can rotate the highlight
+  // around the card. We also rotate the HDR environment by the same azimuth so PBR reflections
+  // (clearcoat glare) follow the key light.
+  const keyPos = useMemo<[number, number, number]>(() => {
+    const az = (lightAzimuth * Math.PI) / 180
+    const el = (lightElevation * Math.PI) / 180
+    const r = 8
+    const y = r * Math.sin(el)
+    const rh = r * Math.cos(el)
+    const x = rh * Math.sin(az)
+    const z = rh * Math.cos(az)
+    return [x, y, z]
+  }, [lightAzimuth, lightElevation])
+
+  const fillPos = useMemo<[number, number, number]>(() => {
+    // Fill light sits ~120° away from the key on the opposite side, slightly lower.
+    const az = ((lightAzimuth + 140) * Math.PI) / 180
+    const el = Math.max(0.15, (lightElevation - 10) * (Math.PI / 180))
+    const r = 7
+    const y = r * Math.sin(el)
+    const rh = r * Math.cos(el)
+    return [rh * Math.sin(az), y, rh * Math.cos(az)]
+  }, [lightAzimuth, lightElevation])
+
+  const rimPos = useMemo<[number, number, number]>(() => {
+    // Rim light is opposite the camera/key, higher up, to outline silhouette.
+    const az = ((lightAzimuth + 180) * Math.PI) / 180
+    const el = (Math.min(80, lightElevation + 20) * Math.PI) / 180
+    const r = 7
+    const y = r * Math.sin(el)
+    const rh = r * Math.cos(el)
+    return [rh * Math.sin(az), y, rh * Math.cos(az)]
+  }, [lightAzimuth, lightElevation])
+
+  const envRotationY = (lightAzimuth * Math.PI) / 180
   const viewId = useStudio((s) => s.viewId)
   const autoRotate = useStudio((s) => s.autoRotate)
   const glareMode = useStudio((s) => s.glareMode)
@@ -71,6 +109,8 @@ export function CardScene() {
         frames={1}
         resolution={256}
         environmentIntensity={envIntensity}
+        environmentRotation={[0, envRotationY, 0]}
+        backgroundRotation={[0, envRotationY, 0]}
         background={backgroundMode === "hdr"}
       >
         <color attach="background" args={["#1a1a1a"]} />
@@ -82,9 +122,9 @@ export function CardScene() {
 
       {backgroundMode === "solid" && <SolidBackground />}
 
-      <directionalLight position={[5, 6, 4]} intensity={keyIntensity} />
-      <directionalLight position={[-4, 2, 3]} intensity={fillIntensity} />
-      <directionalLight position={[0, 2, -5]} intensity={rimIntensity} color={"#b8d0ff"} />
+      <directionalLight position={keyPos} intensity={keyIntensity} />
+      <directionalLight position={fillPos} intensity={fillIntensity} />
+      <directionalLight position={rimPos} intensity={rimIntensity} color={"#b8d0ff"} />
       <ambientLight intensity={0.12} />
 
       <Suspense fallback={null}>

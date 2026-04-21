@@ -95,6 +95,10 @@ export type StudioState = {
   keyIntensity: number
   fillIntensity: number
   rimIntensity: number
+  /** Azimuth (degrees, 0..360) of the key light / HDR rotation around the card's up axis. */
+  lightAzimuth: number
+  /** Elevation (degrees, 0..89) of the key light above the horizon. */
+  lightElevation: number
 
   // Capture
   captureTransparent: boolean
@@ -172,6 +176,8 @@ export const useStudio = create<StudioState>((set) => ({
   keyIntensity: 1.2,
   fillIntensity: 0.6,
   rimIntensity: 0.8,
+  lightAzimuth: 35,
+  lightElevation: 40,
 
   captureTransparent: true,
   captureSize: 2048,

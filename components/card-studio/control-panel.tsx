@@ -534,6 +534,26 @@ export function ControlPanel() {
                 max={3}
                 onChange={(v) => s.set("rimIntensity", v)}
               />
+              <div className="h-px bg-border" />
+              <p className="text-xs text-muted-foreground">
+                Rotate the main light around the card. Affects both the direct highlight and HDR reflections.
+              </p>
+              <NumSlider
+                label="Light azimuth"
+                value={s.lightAzimuth}
+                min={0}
+                max={360}
+                step={1}
+                onChange={(v) => s.set("lightAzimuth", v)}
+              />
+              <NumSlider
+                label="Light elevation"
+                value={s.lightElevation}
+                min={0}
+                max={89}
+                step={1}
+                onChange={(v) => s.set("lightElevation", v)}
+              />
             </AccordionContent>
           </AccordionItem>
 
