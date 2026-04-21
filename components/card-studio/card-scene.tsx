@@ -195,27 +195,34 @@ export function CardScene() {
         <group>
           <CardModel />
           {/*
+            Glare overlay is only shown in the "texture" mode. In "off" it must be
+            absent so it doesn't additively blend over the PBR result and blow out
+            the highlight; in "pbr" mode the specular comes purely from the PBR
+            material reacting to the HDR environment, again with no overlay.
+
             Card is normalized so 1.6 world units ≈ 85.6 mm (≈0.0187 units/mm).
             ISO ID-1 thickness is 0.76 mm → front face sits at z ≈ +0.0071 world units.
             Place glare at z ≈ 0.014 (~0.35 mm above the front face) so it visually
             hugs the surface but is safely clear of z-fighting. The back glare plane
             mirrors the same offset via rotation-Y = π.
           */}
-          <GlareLayer
-            width={glareW}
-            height={glareH}
-            position={[0, 0, 0.014]}
-            rotation={[0, 0, 0]}
-          />
           {glareMode === "texture" && (
-            <group rotation={[0, Math.PI, 0]}>
+            <>
               <GlareLayer
                 width={glareW}
                 height={glareH}
                 position={[0, 0, 0.014]}
                 rotation={[0, 0, 0]}
               />
-            </group>
+              <group rotation={[0, Math.PI, 0]}>
+                <GlareLayer
+                  width={glareW}
+                  height={glareH}
+                  position={[0, 0, 0.014]}
+                  rotation={[0, 0, 0]}
+                />
+              </group>
+            </>
           )}
         </group>
       </Suspense>
