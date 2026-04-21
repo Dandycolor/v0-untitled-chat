@@ -198,8 +198,28 @@ export function ControlPanel() {
 
           <AccordionItem value="designs" className="border-b">
             <SectionTrigger icon={<Palette className="size-3.5" />} title="Designs (PBR)" />
-            <AccordionContent className="px-4 pb-4">
+            <AccordionContent className="space-y-4 px-4 pb-4">
               <PresetManager />
+              <Separator />
+              <div className="space-y-2">
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Texture orientation
+                </p>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">Flip horizontal</Label>
+                  <Switch
+                    checked={s.textureFlipH}
+                    onCheckedChange={(v) => s.set("textureFlipH", v)}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">Flip vertical</Label>
+                  <Switch
+                    checked={s.textureFlipV}
+                    onCheckedChange={(v) => s.set("textureFlipV", v)}
+                  />
+                </div>
+              </div>
             </AccordionContent>
           </AccordionItem>
 

@@ -54,6 +54,10 @@ export type StudioState = {
   // PBR per side
   frontPbr: PbrMapSet
   backPbr: PbrMapSet
+  /** Mirror all PBR texture samplers horizontally. */
+  textureFlipH: boolean
+  /** Mirror all PBR texture samplers vertically. Flip this if the uploaded design appears upside-down. */
+  textureFlipV: boolean
 
   // Card material tuning
   cardRoughness: number
@@ -140,6 +144,8 @@ export const useStudio = create<StudioState>((set) => ({
 
   frontPbr: DEFAULT_DOODLE_FRONT,
   backPbr: DEFAULT_DOODLE_BACK,
+  textureFlipH: false,
+  textureFlipV: true,
 
   cardRoughness: 1,
   cardMetalness: 0.19,

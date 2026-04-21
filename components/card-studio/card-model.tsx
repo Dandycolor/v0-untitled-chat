@@ -42,25 +42,20 @@ function ensurePlanarUv(mesh: THREE.Mesh, sideAxis: 0 | 1 | 2) {
   const pos = geo.attributes.position
   if (!pos) return
 
-  // Tag the geometry so we only rebuild UVs once even across HMR / re-renders,
-  // but always overwrite any UVs shipped inside the GLB — we want a predictable
-  // planar projection that matches how users author textures in 2D editors.
-  const geoAny = geo as unknown as { __cardPlanarUv?: boolean }
-  if (!geoAny.__cardPlanarUv) {
-    const u = new Float32Array(pos.count * 2)
-    for (let i = 0; i < pos.count; i++) {
-      const a0 =
-        (pos.getComponent(i, axes[0]) - bbox.min.getComponent(axes[0])) / (size.getComponent(axes[0]) || 1)
-      const a1 =
-        (pos.getComponent(i, axes[1]) - bbox.min.getComponent(axes[1])) / (size.getComponent(axes[1]) || 1)
-      u[i * 2] = a0
-      // Flip V so uploaded textures read top-down as authored in image editors.
-      u[i * 2 + 1] = 1 - a1
-    }
-    geo.setAttribute("uv", new THREE.BufferAttribute(u, 2))
-    geo.setAttribute("uv1", new THREE.BufferAttribute(u, 2))
-    geoAny.__cardPlanarUv = true
+  // Always overwrite any UVs shipped inside the GLB — we want a predictable planar projection
+  // mapped to [0,1] along the card's two long axes. Orientation of uploaded designs is then
+  // adjusted per-texture via `texture.repeat` (flipH / flipV controls in the UI).
+  const u = new Float32Array(pos.count * 2)
+  for (let i = 0; i < pos.count; i++) {
+    const a0 =
+      (pos.getComponent(i, axes[0]) - bbox.min.getComponent(axes[0])) / (size.getComponent(axes[0]) || 1)
+    const a1 =
+      (pos.getComponent(i, axes[1]) - bbox.min.getComponent(axes[1])) / (size.getComponent(axes[1]) || 1)
+    u[i * 2] = a0
+    u[i * 2 + 1] = a1
   }
+  geo.setAttribute("uv", new THREE.BufferAttribute(u, 2))
+  geo.setAttribute("uv1", new THREE.BufferAttribute(u, 2))
 }
 
 function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAxis: 0 | 1 | 2 } {
@@ -118,6 +113,8 @@ export function CardModel() {
   const orientation = useStudio((s) => s.orientation)
   const frontPbr = useStudio((s) => s.frontPbr)
   const backPbr = useStudio((s) => s.backPbr)
+  const textureFlipH = useStudio((s) => s.textureFlipH)
+  const textureFlipV = useStudio((s) => s.textureFlipV)
   const cardRoughness = useStudio((s) => s.cardRoughness)
   const cardMetalness = useStudio((s) => s.cardMetalness)
   const cardNormalScale = useStudio((s) => s.cardNormalScale)
@@ -172,8 +169,10 @@ export function CardModel() {
     metalness: cardMetalness,
     normalScale: cardNormalScale,
     clearcoat: cardClearcoat,
-    clearcoatRoughness: cardClearcoatRoughness,
-    sideAxis,
+  clearcoatRoughness: cardClearcoatRoughness,
+  sideAxis,
+  flipH: textureFlipH,
+  flipV: textureFlipV,
   })
 
   const chipMaterial = useChipMaterial({

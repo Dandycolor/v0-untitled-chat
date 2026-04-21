@@ -15,7 +15,11 @@ type Params = {
   clearcoatRoughness: number
   /** 0=X, 1=Y, 2=Z — object-local axis that points from back side to front side. */
   sideAxis: 0 | 1 | 2
-}
+  /** Mirror all textures horizontally (applies to both sides). */
+  flipH: boolean
+  /** Mirror all textures vertically (applies to both sides). */
+  flipV: boolean
+  }
 
 // Module-level 1x1 neutral textures. Created lazily once the client is running.
 let NEUTRAL_WHITE: THREE.Texture | null = null
@@ -96,8 +100,18 @@ function useMaybeTexture(
  * based on object-local normal direction (positive side → front set, negative → back set).
  */
 export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalMaterial {
-  const { front, back, roughness, metalness, normalScale, clearcoat, clearcoatRoughness, sideAxis } =
-    params
+  const {
+    front,
+    back,
+    roughness,
+    metalness,
+    normalScale,
+    clearcoat,
+    clearcoatRoughness,
+    sideAxis,
+    flipH,
+    flipV,
+  } = params
 
   const frontAlbedo = useMaybeTexture(front.albedo, THREE.SRGBColorSpace)
   const backAlbedo = useMaybeTexture(back.albedo, THREE.SRGBColorSpace)
@@ -235,6 +249,42 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     frontAo.tex,
     backAo.tex,
     sideAxis,
+  ])
+
+  // Apply flip-H/V to every PBR texture via repeat/center. center=0.5 pivots the mirror
+  // around the middle of the texture; repeat = -1 flips, = 1 keeps. Cheap and works on the fly.
+  useEffect(() => {
+    const textures: THREE.Texture[] = [
+      frontAlbedo.tex,
+      backAlbedo.tex,
+      frontNormal.tex,
+      backNormal.tex,
+      frontRough.tex,
+      backRough.tex,
+      frontMetal.tex,
+      backMetal.tex,
+      frontAo.tex,
+      backAo.tex,
+    ]
+    for (const t of textures) {
+      t.center.set(0.5, 0.5)
+      t.repeat.x = flipH ? -1 : 1
+      t.repeat.y = flipV ? -1 : 1
+      t.needsUpdate = true
+    }
+  }, [
+    flipH,
+    flipV,
+    frontAlbedo.tex,
+    backAlbedo.tex,
+    frontNormal.tex,
+    backNormal.tex,
+    frontRough.tex,
+    backRough.tex,
+    frontMetal.tex,
+    backMetal.tex,
+    frontAo.tex,
+    backAo.tex,
   ])
 
   // Apply live scalar params every render — Three's WebGLMaterials reads these
