@@ -17,7 +17,8 @@ export function CardCanvas() {
 
   return (
     <Canvas
-      dpr={[1, 2]}
+      // Allow up to 3x DPR so aliasing is reduced on high-DPI displays; the min stays at 1.
+      dpr={[1, 3]}
       gl={{
         antialias: true,
         alpha: true,
