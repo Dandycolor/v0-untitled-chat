@@ -9,8 +9,18 @@ export type CaptureOptions = {
 }
 
 /**
- * Renders the current scene to an off-screen target at the desired resolution
- * and downloads it as a PNG.
+ * Renders the current scene at a chosen resolution and downloads it as PNG.
+ *
+ * Why not render to an offscreen WebGLRenderTarget and readPixels?
+ * Because writing to a RenderTarget skips three.js's output-color-space conversion,
+ * so the resulting bytes are linear (tone-mapped but not sRGB-encoded). The PNG
+ * looks washed-out / "greyer" than the browser preview.
+ *
+ * Instead we briefly resize the on-screen canvas to the requested size, render
+ * through the normal screen path (which DOES apply ACES tone mapping + sRGB
+ * encoding), then grab the drawing buffer with `canvas.toBlob()`. This is true
+ * WYSIWYG — what you see in the preview is exactly what the PNG will contain.
+ * `preserveDrawingBuffer: true` on the Canvas keeps the buffer readable after render.
  */
 export function captureScene(
   gl: THREE.WebGLRenderer,
@@ -19,6 +29,9 @@ export function captureScene(
   options: CaptureOptions,
 ) {
   const { transparent, size } = options
+  const canvas = gl.domElement
+
+  // Capture existing state so we can restore every side-effect we mutate.
   const prevSize = new THREE.Vector2()
   gl.getSize(prevSize)
   const prevPixelRatio = gl.getPixelRatio()
@@ -26,57 +39,58 @@ export function captureScene(
   const prevBackground = scene.background
   const prevAutoClear = gl.autoClear
 
+  // Keep the aspect ratio of the current viewport so cropping doesn't change.
   const aspect = prevSize.x / prevSize.y
   const width = size
   const height = Math.round(size / aspect)
 
-  const target = new THREE.WebGLRenderTarget(width, height, {
-    colorSpace: THREE.SRGBColorSpace,
-    samples: 4,
-  })
+  // If the active camera is a PerspectiveCamera we need to keep its aspect
+  // in sync, otherwise the captured frame stretches.
+  const persp = camera as THREE.PerspectiveCamera
+  const prevCamAspect = persp.isPerspectiveCamera ? persp.aspect : undefined
 
   try {
     if (transparent) {
       scene.background = null
       gl.setClearColor(0x000000, 0)
     }
+    // setSize with updateStyle=false keeps the CSS size unchanged (no visible flicker),
+    // only the drawing buffer is resized to the export dimensions.
     gl.setPixelRatio(1)
     gl.setSize(width, height, false)
-    gl.setRenderTarget(target)
+
+    if (persp.isPerspectiveCamera) {
+      persp.aspect = width / height
+      persp.updateProjectionMatrix()
+    }
+
+    // Render through the default framebuffer so tone mapping + sRGB encoding apply.
+    gl.setRenderTarget(null)
     gl.clear()
     gl.render(scene, camera)
 
-    const pixels = new Uint8Array(width * height * 4)
-    gl.readRenderTargetPixels(target, 0, 0, width, height, pixels)
-
-    // Flip Y (WebGL origin is bottom-left)
-    const flipped = new Uint8ClampedArray(pixels.length)
-    const rowLen = width * 4
-    for (let y = 0; y < height; y++) {
-      const srcStart = (height - 1 - y) * rowLen
-      const dstStart = y * rowLen
-      flipped.set(pixels.subarray(srcStart, srcStart + rowLen), dstStart)
-    }
-
-    const canvas = document.createElement("canvas")
-    canvas.width = width
-    canvas.height = height
-    const ctx = canvas.getContext("2d")!
-    const imageData = new ImageData(flipped, width, height)
-    ctx.putImageData(imageData, 0, 0)
-
-    const dataUrl = canvas.toDataURL("image/png")
-    const a = document.createElement("a")
-    a.href = dataUrl
-    a.download = options.filename ?? `card-${Date.now()}.png`
-    a.click()
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = options.filename ?? `card-${Date.now()}.png`
+        a.click()
+        // Release the object URL after the download is dispatched.
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+      },
+      "image/png",
+    )
   } finally {
-    gl.setRenderTarget(null)
     scene.background = prevBackground
     gl.setClearAlpha(prevClearAlpha)
     gl.setPixelRatio(prevPixelRatio)
     gl.setSize(prevSize.x, prevSize.y, false)
     gl.autoClear = prevAutoClear
-    target.dispose()
+    if (persp.isPerspectiveCamera && prevCamAspect !== undefined) {
+      persp.aspect = prevCamAspect
+      persp.updateProjectionMatrix()
+    }
   }
 }
