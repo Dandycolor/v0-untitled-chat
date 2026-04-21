@@ -1,8 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo, useState } from "react"
 import * as THREE from "three"
-import { useLoader } from "@react-three/fiber"
 import { resolveTextureUrl } from "@/lib/texture-url"
 import type { PbrMapSet } from "@/lib/studio-store"
 
@@ -42,9 +41,9 @@ function neutralNormal(): THREE.Texture {
 }
 
 /**
- * Loads a texture for a URL. When the URL is absent, returns a neutral fallback
- * (white for color/ORM channels; tangent-space-neutral for normals). Always returns
- * a valid Texture so GL samplers never receive null.
+ * Loads a texture without Suspense. If the URL is absent or the image fails to load
+ * (e.g. CORS, 404), returns a neutral fallback so the rest of the scene keeps rendering
+ * and user interactions (sliders, camera) remain responsive.
  */
 function useMaybeTexture(
   url: string | undefined,
@@ -52,21 +51,44 @@ function useMaybeTexture(
   isNormal = false,
 ): { tex: THREE.Texture; present: boolean } {
   const resolved = resolveTextureUrl(url)
-  const PLACEHOLDER = "/textures/doodle/albedo.png"
-  // Always call useLoader with a valid URL to keep hook order stable.
-  const loaded = useLoader(THREE.TextureLoader, resolved ?? PLACEHOLDER) as THREE.Texture
-  return useMemo(() => {
-    if (resolved) {
-      const t = loaded.clone()
-      t.needsUpdate = true
-      t.colorSpace = colorSpace
-      t.wrapS = THREE.ClampToEdgeWrapping
-      t.wrapT = THREE.ClampToEdgeWrapping
-      t.anisotropy = 8
-      return { tex: t, present: true }
+  const fallback = isNormal ? neutralNormal() : neutralWhite()
+  const [tex, setTex] = useState<THREE.Texture>(fallback)
+
+  useEffect(() => {
+    if (!resolved) {
+      setTex(fallback)
+      return
     }
-    return { tex: isNormal ? neutralNormal() : neutralWhite(), present: false }
-  }, [loaded, resolved, colorSpace, isNormal])
+    let cancelled = false
+    const loader = new THREE.TextureLoader()
+    loader.setCrossOrigin("anonymous")
+    loader.load(
+      resolved,
+      (t) => {
+        if (cancelled) {
+          t.dispose()
+          return
+        }
+        t.colorSpace = colorSpace
+        t.wrapS = THREE.ClampToEdgeWrapping
+        t.wrapT = THREE.ClampToEdgeWrapping
+        t.anisotropy = 8
+        t.needsUpdate = true
+        setTex(t)
+      },
+      undefined,
+      (err) => {
+        console.log("[v0] texture load failed:", resolved, err)
+        if (!cancelled) setTex(fallback)
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolved, colorSpace, isNormal])
+
+  return { tex, present: !!resolved }
 }
 
 /**
@@ -88,15 +110,8 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
   const frontAo = useMaybeTexture(front.ao ?? front.orm, THREE.NoColorSpace)
   const backAo = useMaybeTexture(back.ao ?? back.orm, THREE.NoColorSpace)
 
-  const materialRef = useRef<THREE.MeshPhysicalMaterial | null>(null)
-
   const material = useMemo(() => {
-    const mat = new THREE.MeshPhysicalMaterial({
-      roughness,
-      metalness,
-      clearcoat,
-      clearcoatRoughness,
-    })
+    const mat = new THREE.MeshPhysicalMaterial({})
 
     // Base maps — use front set as the "primary" so Three enables all chunks.
     mat.map = frontAlbedo.tex
@@ -104,7 +119,7 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     mat.roughnessMap = frontRough.tex
     mat.metalnessMap = frontMetal.tex
     mat.aoMap = frontAo.tex
-    mat.normalScale = new THREE.Vector2(normalScale, normalScale)
+    mat.normalScale = new THREE.Vector2(1, 1)
 
     // Ensure Three's shader program cache never returns a stale blended program.
     const cacheKey = `card-two-sided-${sideAxis}`
@@ -207,7 +222,6 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
       )
     }
 
-    materialRef.current = mat
     return mat
   }, [
     frontAlbedo.tex,
@@ -223,21 +237,21 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     sideAxis,
   ])
 
-  // Keep live params in sync without rebuilding shaders
-  useEffect(() => {
-    if (!materialRef.current) return
-    materialRef.current.roughness = roughness
-    materialRef.current.metalness = metalness
-    materialRef.current.clearcoat = clearcoat
-    materialRef.current.clearcoatRoughness = clearcoatRoughness
-    materialRef.current.normalScale.set(normalScale, normalScale)
-  }, [roughness, metalness, clearcoat, clearcoatRoughness, normalScale])
+  // Apply live scalar params every render — Three's WebGLMaterials reads these
+  // plain properties on each frame, so updates are picked up without shader recompile.
+  material.roughness = roughness
+  material.metalness = metalness
+  material.clearcoat = clearcoat
+  material.clearcoatRoughness = clearcoatRoughness
+  material.normalScale.set(normalScale, normalScale)
 
+  // Cleanup on unmount
   useEffect(() => {
+    const m = material
     return () => {
-      materialRef.current?.dispose()
+      m.dispose()
     }
-  }, [])
+  }, [material])
 
   return material
 }
