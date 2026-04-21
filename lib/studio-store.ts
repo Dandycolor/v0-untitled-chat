@@ -111,6 +111,8 @@ export type StudioState = {
   foilSparkle: number
   /** Grid density of sparkles — higher = more, finer stars. */
   foilDensity: number
+  /** Per-star radius multiplier (0.2..4). 1 ≈ previous default. */
+  foilSparkleSize: number
   /** Hex color the sheen blob is tinted with. Sparkles stay white. */
   foilTint: string
 
@@ -213,6 +215,7 @@ export const useStudio = create<StudioState>((set) => ({
   foilSheen: 0.8,
   foilSparkle: 1.4,
   foilDensity: 80,
+  foilSparkleSize: 1,
   foilTint: "#fff4cc",
   glareWidth: 0.35,
   glareSoftness: 0.4,

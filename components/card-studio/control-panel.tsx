@@ -443,10 +443,18 @@ export function ControlPanel() {
                     label="Sparkle density"
                     value={s.foilDensity}
                     min={20}
-                    max={200}
+                    max={400}
                     step={1}
                     onChange={(v) => s.set("foilDensity", v)}
                     format={(v) => v.toFixed(0)}
+                  />
+                  <NumSlider
+                    label="Sparkle size"
+                    value={s.foilSparkleSize}
+                    min={0.2}
+                    max={4}
+                    step={0.01}
+                    onChange={(v) => s.set("foilSparkleSize", v)}
                   />
                   <Row label="Sheen tint">
                     <div className="flex items-center gap-2">

@@ -25,6 +25,7 @@ export function FoilLayer({
   sheen,
   sparkle,
   density,
+  sparkleSize,
   tintColor,
   cornerRadius,
 }: {
@@ -38,6 +39,8 @@ export function FoilLayer({
   sparkle: number
   /** Sparkle grid density — higher = more, smaller stars. */
   density: number
+  /** Per-star radius multiplier — 1 is the previous default. */
+  sparkleSize: number
   /** Hex color the sheen blob is tinted with. Sparkles stay white. */
   tintColor: string
   /** Rounded corner radius as fraction of the shorter side. ISO ID-1 ≈ 0.06. */
@@ -55,6 +58,7 @@ export function FoilLayer({
       uSheen: { value: sheen },
       uSparkle: { value: sparkle },
       uDensity: { value: density },
+      uSparkleSize: { value: sparkleSize },
       uTint: { value: new THREE.Color(tintColor) },
       uSize: { value: new THREE.Vector2(width, height) },
       uRadius: { value: radius },
@@ -76,6 +80,7 @@ export function FoilLayer({
     mat.uniforms.uSheen.value = sheen
     mat.uniforms.uSparkle.value = sparkle
     mat.uniforms.uDensity.value = density
+    mat.uniforms.uSparkleSize.value = sparkleSize
     mat.uniforms.uTint.value.set(tintColor)
     mat.uniforms.uTime.value = clock.elapsedTime
   })
@@ -125,6 +130,7 @@ const FRAG = /* glsl */ `
   uniform float uSheen;
   uniform float uSparkle;
   uniform float uDensity;
+  uniform float uSparkleSize;
   uniform vec3  uTint;
   uniform vec2  uSize;
   uniform float uRadius;
@@ -194,8 +200,11 @@ const FRAG = /* glsl */ `
     // Distance from this fragment to the star within the cell.
     float starDist = length(f - starPos);
     // Star has a tiny circular core; use an inverse-square-ish falloff so it
-    // reads as a bright pinprick rather than a fuzzy dot.
-    float starCore = smoothstep(0.06, 0.0, starDist);
+    // reads as a bright pinprick rather than a fuzzy dot. Radius is driven by
+    // `uSparkleSize` so the user can dial up fat glitter flakes.
+    // Clamp so the star can never exceed its own grid cell (distance 0..~0.7).
+    float starR = clamp(0.06 * uSparkleSize, 0.005, 0.5);
+    float starCore = smoothstep(starR, 0.0, starDist);
 
     // Facet alignment: 1 when the camera's in-plane direction matches the
     // facet's direction, 0 otherwise. Pow sharpens the response so sparkles

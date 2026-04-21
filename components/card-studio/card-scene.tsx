@@ -43,6 +43,7 @@ export function CardScene() {
   const foilSheen = useStudio((s) => s.foilSheen)
   const foilSparkle = useStudio((s) => s.foilSparkle)
   const foilDensity = useStudio((s) => s.foilDensity)
+  const foilSparkleSize = useStudio((s) => s.foilSparkleSize)
   const foilTint = useStudio((s) => s.foilTint)
 
   // Compute key light position from azimuth/elevation so the user can rotate the highlight
@@ -298,6 +299,7 @@ export function CardScene() {
                 sheen={foilSheen}
                 sparkle={foilSparkle}
                 density={foilDensity}
+                sparkleSize={foilSparkleSize}
                 tintColor={foilTint}
               />
               <group rotation={[0, Math.PI, 0]}>
@@ -308,6 +310,7 @@ export function CardScene() {
                   sheen={foilSheen}
                   sparkle={foilSparkle}
                   density={foilDensity}
+                  sparkleSize={foilSparkleSize}
                   tintColor={foilTint}
                 />
               </group>
