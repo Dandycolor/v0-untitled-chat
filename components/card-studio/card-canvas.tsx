@@ -5,6 +5,7 @@ import { useEffect } from "react"
 import * as THREE from "three"
 import { useStudio } from "@/lib/studio-store"
 import { CardScene } from "./card-scene"
+import { CameraTelemetryBinding } from "./camera-telemetry"
 import { captureScene } from "./capture"
 
 /**
@@ -38,6 +39,7 @@ export function CardCanvas() {
     >
       <ToneMappingBinding />
       <CaptureBinding />
+      <CameraTelemetryBinding />
       <CardScene />
     </Canvas>
   )
