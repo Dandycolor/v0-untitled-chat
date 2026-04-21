@@ -69,6 +69,7 @@ export function CardScene() {
   const autoRotate = useStudio((s) => s.autoRotate)
   const glareMode = useStudio((s) => s.glareMode)
   const projection = useStudio((s) => s.projection)
+  const focalLength = useStudio((s) => s.focalLength)
   const initialView = VIEWS[viewId]
 
   const [rigEnabled, setRigEnabled] = useState(true)
@@ -84,6 +85,34 @@ export function CardScene() {
 
   const target = useMemo(() => new THREE.Vector3(0, 0, 0), [])
   const controlsRef = useRef<OrbitControlsImpl>(null)
+
+  // Live dolly-zoom: when the user drags the focal slider, pull the camera along its
+  // current view direction so the subject stays the same size, but perspective
+  // distortion changes. This runs every time focalLength (or view) changes, so it
+  // works even after OrbitControls has taken over the camera.
+  useEffect(() => {
+    if (projection !== "perspective") return
+    const controls = controlsRef.current
+    if (!controls) return
+    const cam = controls.object as THREE.PerspectiveCamera
+    if (!cam.isPerspectiveCamera) return
+
+    const view = VIEWS[viewId]
+    const refFocal = (() => {
+      const fovRad = (view.fov * Math.PI) / 180
+      return 35 / 2 / Math.tan(fovRad / 2)
+    })()
+    // Baseline distance = length of the authored position vector (controls.target is origin).
+    const baseDistance = Math.hypot(view.pos[0], view.pos[1], view.pos[2])
+    const desiredDistance = baseDistance * (focalLength / refFocal)
+
+    const offset = new THREE.Vector3().subVectors(cam.position, controls.target)
+    const currentDistance = offset.length() || 1
+    offset.multiplyScalar(desiredDistance / currentDistance)
+    cam.position.copy(controls.target).add(offset)
+    cam.setFocalLength(focalLength)
+    controls.update()
+  }, [focalLength, viewId, projection])
 
   const glareW = 1.9
   const glareH = 1.25
@@ -166,8 +195,8 @@ export function CardScene() {
         enableDamping
         dampingFactor={0.08}
         enablePan={false}
-        minDistance={1.2}
-        maxDistance={6}
+        minDistance={0.35}
+        maxDistance={14}
         autoRotate={autoRotate}
         autoRotateSpeed={0.6}
         onStart={() => setRigEnabled(false)}

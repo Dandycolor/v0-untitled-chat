@@ -44,21 +44,20 @@ export function CameraRig({
     desiredLookAt.current.copy(target)
     const persp = camera as THREE.PerspectiveCamera
     const ortho = camera as THREE.OrthographicCamera
+
+    // Baseline authored distance for this view (used as reference so the card stays
+    // the same screen-size at the reference focal length).
+    const refFocal = focalFromFov(v.fov)
+    const distanceScale = focalLength / refFocal
+
+    desiredPos.current.set(
+      v.pos[0] * distanceScale,
+      v.pos[1] * distanceScale,
+      v.pos[2] * distanceScale,
+    )
+
     if ((persp as unknown as { isPerspectiveCamera?: boolean }).isPerspectiveCamera) {
-      // Dolly-zoom: changing focal length affects perspective distortion, not subject size.
-      // We keep the card roughly the same size on screen by scaling the camera distance
-      // proportionally to the focal length (relative to the reference focal that matches
-      // the view's authored FOV). Short focal -> camera closer -> strong perspective.
-      const refFocal = focalFromFov(v.fov)
-      const distanceScale = focalLength / refFocal
-      desiredPos.current.set(
-        v.pos[0] * distanceScale,
-        v.pos[1] * distanceScale,
-        v.pos[2] * distanceScale,
-      )
       persp.setFocalLength(focalLength)
-    } else {
-      desiredPos.current.set(...v.pos)
     }
     if ((ortho as unknown as { isOrthographicCamera?: boolean }).isOrthographicCamera) {
       ortho.zoom = v.zoom
