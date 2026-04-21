@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Check, Image as ImageIcon, Loader2, Plus, Trash2, Upload, X } from "lucide-react"
+import { upload } from "@vercel/blob/client"
 import { useStudio, type DesignPreset } from "@/lib/studio-store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -145,6 +146,8 @@ function UploadPresetDialog({ onUploaded }: { onUploaded: () => void }) {
     setBack({})
   }
 
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+
   const handleSubmit = async () => {
     if (!name.trim()) {
       toast.error("Enter a preset name")
@@ -154,24 +157,51 @@ function UploadPresetDialog({ onUploaded }: { onUploaded: () => void }) {
       toast.error("Select at least one texture")
       return
     }
-    const fd = new FormData()
-    fd.set("name", name.trim())
-    for (const [k, f] of Object.entries(front)) if (f) fd.set(`front_${k}`, f, f.name)
-    for (const [k, f] of Object.entries(back)) if (f) fd.set(`back_${k}`, f, f.name)
 
     setUploading(true)
+    setProgress({ done: 0, total: totalCount })
+
+    const id = generateId()
+    const entries: Array<{ side: "front" | "back"; channel: string; file: File }> = []
+    for (const [k, f] of Object.entries(front)) if (f) entries.push({ side: "front", channel: k, file: f })
+    for (const [k, f] of Object.entries(back)) if (f) entries.push({ side: "back", channel: k, file: f })
+
     try {
-      const r = await fetch("/api/presets", { method: "POST", body: fd })
-      if (!r.ok) throw new Error(String(r.status))
+      const frontUrls: Record<string, string> = {}
+      const backUrls: Record<string, string> = {}
+      let done = 0
+
+      for (const { side, channel, file } of entries) {
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_")
+        const pathname = `presets/${id}/${side}-${channel}-${safeName}`
+        // Uploads directly from the browser to Blob, bypassing the 4.5 MB serverless body limit.
+        const blob = await upload(pathname, file, {
+          access: "public",
+          handleUploadUrl: "/api/blob-upload-token",
+        })
+        if (side === "front") frontUrls[channel] = blob.url
+        else backUrls[channel] = blob.url
+        done += 1
+        setProgress({ done, total: entries.length })
+      }
+
+      const r = await fetch("/api/presets", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, name: name.trim(), front: frontUrls, back: backUrls }),
+      })
+      if (!r.ok) throw new Error(`meta ${r.status}`)
+
       toast.success("Preset saved")
       setOpen(false)
       reset()
       onUploaded()
     } catch (err) {
       console.error("[v0] preset upload error:", err)
-      toast.error("Failed to upload preset")
+      toast.error(`Failed to upload preset: ${(err as Error).message}`)
     } finally {
       setUploading(false)
+      setProgress(null)
     }
   }
 
@@ -228,7 +258,8 @@ function UploadPresetDialog({ onUploaded }: { onUploaded: () => void }) {
           <Button type="button" onClick={handleSubmit} disabled={uploading || totalCount === 0}>
             {uploading ? (
               <>
-                <Loader2 className="mr-1.5 size-3.5 animate-spin" /> Uploading…
+                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                {progress ? `Uploading ${progress.done}/${progress.total}…` : "Uploading…"}
               </>
             ) : (
               "Save preset"
@@ -355,6 +386,12 @@ function ChannelRow({
       )}
     </div>
   )
+}
+
+function generateId() {
+  return (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2))
+    .replace(/-/g, "")
+    .slice(0, 12)
 }
 
 function formatSize(bytes: number) {

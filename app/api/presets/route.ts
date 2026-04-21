@@ -2,12 +2,14 @@ import { put, list, del } from "@vercel/blob"
 import { type NextRequest, NextResponse } from "next/server"
 
 /**
- * Presets are stored as two Blob objects per preset:
- *   presets/<id>/meta.json   — { id, name, front, back, createdAt }
- *   presets/<id>/<channel>-<filename>  — uploaded texture files
+ * Presets are stored as two kinds of Blob objects:
+ *   presets/<id>/meta.json                    — { id, name, front, back, createdAt }
+ *   presets/<id>/<side>-<channel>-<filename>  — uploaded textures (uploaded directly from
+ *                                                the browser via @vercel/blob/client)
  *
- * The Blob store is PUBLIC, so `front`/`back` hold direct CDN URLs that
- * Three.js's TextureLoader can fetch without any proxy.
+ * The Blob store is PUBLIC so `front`/`back` hold direct CDN URLs that Three.js can load
+ * without a proxy. This POST only persists metadata — the large files never pass through
+ * this route, avoiding the Vercel 4.5 MB serverless body limit.
  */
 
 type PresetMeta = {
@@ -42,35 +44,29 @@ export async function GET() {
   }
 }
 
+/**
+ * Expects a small JSON body:
+ *   { id, name, front: { channel: url }, back: { channel: url } }
+ * Writes meta.json and returns the saved preset metadata.
+ */
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData()
-    const name = (formData.get("name") as string) || "Untitled"
-    const id = (formData.get("id") as string) || cryptoRandomId()
-
-    const front: Record<string, string> = {}
-    const back: Record<string, string> = {}
-
-    const channels = ["albedo", "normal", "roughness", "metallic", "ao", "height", "orm"] as const
-    for (const side of ["front", "back"] as const) {
-      for (const ch of channels) {
-        const file = formData.get(`${side}_${ch}`) as File | null
-        if (!file || !(file instanceof File) || file.size === 0) continue
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_")
-        const pathname = `presets/${id}/${side}-${ch}-${safeName}`
-        const blob = await put(pathname, file, { access: "public", allowOverwrite: true })
-        if (side === "front") front[ch] = blob.url
-        else back[ch] = blob.url
-      }
+    const body = (await request.json()) as {
+      id?: string
+      name?: string
+      front?: Record<string, string | undefined>
+      back?: Record<string, string | undefined>
     }
 
+    const id = body.id || cryptoRandomId()
     const meta: PresetMeta = {
       id,
-      name,
-      front,
-      back,
+      name: body.name || "Untitled",
+      front: body.front || {},
+      back: body.back || {},
       createdAt: Date.now(),
     }
+
     await put(`presets/${id}/meta.json`, JSON.stringify(meta), {
       access: "public",
       contentType: "application/json",
