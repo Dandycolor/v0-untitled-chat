@@ -194,10 +194,15 @@ export function CardScene() {
       <Suspense fallback={null}>
         <group>
           <CardModel />
+          {/*
+            Glare sits right on top of the card's front face. The card's half-thickness
+            after normalization is ~0.007, so a 0.0015 offset is visually coplanar;
+            polygonOffset inside GlareLayer prevents z-fighting with the PBR surface.
+          */}
           <GlareLayer
             width={glareW}
             height={glareH}
-            position={[0, 0, 0.06]}
+            position={[0, 0, 0.0015]}
             rotation={[0, 0, 0]}
           />
           {glareMode === "texture" && (
@@ -205,7 +210,7 @@ export function CardScene() {
               <GlareLayer
                 width={glareW}
                 height={glareH}
-                position={[0, 0, 0.06]}
+                position={[0, 0, 0.0015]}
                 rotation={[0, 0, 0]}
               />
             </group>
