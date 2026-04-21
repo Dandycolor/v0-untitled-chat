@@ -145,7 +145,7 @@ export const useStudio = create<StudioState>((set) => ({
   frontPbr: DEFAULT_DOODLE_FRONT,
   backPbr: DEFAULT_DOODLE_BACK,
   textureFlipH: false,
-  textureFlipV: true,
+  textureFlipV: false,
 
   cardRoughness: 1,
   cardMetalness: 0.19,
