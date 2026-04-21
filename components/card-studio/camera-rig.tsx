@@ -27,6 +27,7 @@ export function CameraRig({
 }) {
   const viewId = useStudio((s) => s.viewId)
   const projection = useStudio((s) => s.projection)
+  const focalLength = useStudio((s) => s.focalLength)
   const { camera } = useThree()
   const desiredPos = useRef(new THREE.Vector3())
   const desiredLookAt = useRef(new THREE.Vector3())
@@ -38,14 +39,15 @@ export function CameraRig({
     const persp = camera as THREE.PerspectiveCamera
     const ortho = camera as THREE.OrthographicCamera
     if ((persp as unknown as { isPerspectiveCamera?: boolean }).isPerspectiveCamera) {
-      persp.fov = v.fov
-      persp.updateProjectionMatrix()
+      // Use a 35mm-equivalent focal length so the slider reads like a real camera lens.
+      // Three.js derives fov from focalLength + filmGauge (defaults to 35mm).
+      persp.setFocalLength(focalLength)
     }
     if ((ortho as unknown as { isOrthographicCamera?: boolean }).isOrthographicCamera) {
       ortho.zoom = v.zoom
       ortho.updateProjectionMatrix()
     }
-  }, [viewId, target, camera, projection])
+  }, [viewId, target, camera, projection, focalLength])
 
   useFrame((_, dt) => {
     if (!enabled) return

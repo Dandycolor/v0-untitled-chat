@@ -50,6 +50,8 @@ export type StudioState = {
   viewId: ViewId
   autoRotate: boolean
   projection: Projection
+  /** Focal length in mm (35mm film equivalent). Overrides per-view FOV when in perspective mode. */
+  focalLength: number
 
   // PBR per side
   frontPbr: PbrMapSet
@@ -141,6 +143,7 @@ export const useStudio = create<StudioState>((set) => ({
   viewId: "threeQuarterFront",
   autoRotate: false,
   projection: "perspective",
+  focalLength: 65,
 
   frontPbr: DEFAULT_DOODLE_FRONT,
   backPbr: DEFAULT_DOODLE_BACK,

@@ -164,6 +164,17 @@ export function ControlPanel() {
                 </ToggleGroup>
               </Row>
 
+              {s.projection === "perspective" && (
+                <NumSlider
+                  label="Focal length (mm)"
+                  value={s.focalLength}
+                  min={14}
+                  max={200}
+                  step={1}
+                  onChange={(v) => s.set("focalLength", v)}
+                />
+              )}
+
               <Row label="Camera view">
                 <div className="grid grid-cols-3 gap-1.5">
                   {(
