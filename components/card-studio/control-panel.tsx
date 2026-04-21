@@ -104,7 +104,7 @@ export function ControlPanel() {
         </Button>
       </header>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1 [&>[data-radix-scroll-area-viewport]]:max-h-full">
         <Accordion
           type="multiple"
           defaultValue={["model", "designs", "card", "glare", "chip", "logo", "env", "capture"]}
