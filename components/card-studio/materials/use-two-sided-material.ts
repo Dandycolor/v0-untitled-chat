@@ -25,6 +25,13 @@ type Params = {
   edgeColor: string
   /** 0..1 — mixes `edgeColor` into the card's diffuse near perpendicular faces. */
   edgeTint: number
+  /**
+   * Optional per-side albedo override. When provided, replaces the sampled
+   * PBR diffuse for that face entirely (solid color / gradient paint).
+   * Pass `null` / `undefined` to fall back to the preset's albedo texture.
+   */
+  frontAlbedoOverride?: THREE.Texture | null
+  backAlbedoOverride?: THREE.Texture | null
   }
 
 // Module-level 1x1 neutral textures. Created lazily once the client is running.
@@ -165,6 +172,8 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     flipV,
     edgeColor,
     edgeTint,
+    frontAlbedoOverride,
+    backAlbedoOverride,
   } = params
 
   const frontAlbedo = useMaybeTexture(front.albedo, THREE.SRGBColorSpace)
@@ -184,6 +193,15 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
   const edgeUniformsRef = useRef<{
     color: { value: THREE.Color }
     tint: { value: number }
+  } | null>(null)
+
+  // Same trick for front/back albedo: onBeforeCompile picks an initial texture
+  // (override if present, preset otherwise) and exposes the uniform handles so a
+  // downstream effect can hot-swap in the new CanvasTexture whenever the user
+  // toggles solid / gradient fill without tearing down the whole material.
+  const albedoUniformsRef = useRef<{
+    front: { value: THREE.Texture }
+    back: { value: THREE.Texture }
   } | null>(null)
 
   const material = useMemo(() => {
@@ -217,8 +235,11 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     // Letting Three hash the modified shader source is cheap and correct.
 
     mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uFrontAlbedo = { value: frontAlbedo.tex }
-      shader.uniforms.uBackAlbedo = { value: backAlbedo.tex }
+      const frontAlbedoUniform = { value: frontAlbedoOverride ?? frontAlbedo.tex }
+      const backAlbedoUniform = { value: backAlbedoOverride ?? backAlbedo.tex }
+      shader.uniforms.uFrontAlbedo = frontAlbedoUniform
+      shader.uniforms.uBackAlbedo = backAlbedoUniform
+      albedoUniformsRef.current = { front: frontAlbedoUniform, back: backAlbedoUniform }
       shader.uniforms.uFrontRough = { value: frontRough.tex }
       shader.uniforms.uBackRough = { value: backRough.tex }
       shader.uniforms.uFrontMetal = { value: frontMetal.tex }
@@ -393,6 +414,32 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     u.color.value.set(edgeColor)
     u.tint.value = edgeTint
   }, [edgeColor, edgeTint])
+
+  // Albedo override swap: whenever the user toggles solid / gradient / none or
+  // changes colors, the generated CanvasTexture reference changes. Point the
+  // shader uniforms at the new texture (or back at the preset albedo) without
+  // triggering a shader recompile.
+  useEffect(() => {
+    const u = albedoUniformsRef.current
+    if (!u) return
+    u.front.value = frontAlbedoOverride ?? frontAlbedo.tex
+    u.back.value = backAlbedoOverride ?? backAlbedo.tex
+  }, [frontAlbedoOverride, backAlbedoOverride, frontAlbedo.tex, backAlbedo.tex])
+
+  // Apply Flip H/V to override textures too, so the user-facing "Flip horizontal /
+  // vertical" toggles behave identically regardless of whether the card shows a
+  // PBR design or a solid / gradient fill. Cheap (only two textures at most).
+  useEffect(() => {
+    const overrides = [frontAlbedoOverride, backAlbedoOverride].filter(
+      (t): t is THREE.Texture => !!t,
+    )
+    for (const t of overrides) {
+      t.center.set(0.5, 0.5)
+      t.repeat.x = flipH ? -1 : 1
+      t.repeat.y = flipV ? -1 : 1
+      t.needsUpdate = true
+    }
+  }, [flipH, flipV, frontAlbedoOverride, backAlbedoOverride])
 
   // Apply live scalar params every render — Three's WebGLMaterials reads these
   // plain properties on each frame, so updates are picked up without shader recompile.

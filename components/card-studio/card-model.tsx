@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useEffect, useMemo } from "react"
 import * as THREE from "three"
 import { useGLTF } from "@react-three/drei"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
@@ -8,6 +8,7 @@ import { useStudio, type CardModelId } from "@/lib/studio-store"
 import { useTwoSidedPhysicalMaterial } from "./materials/use-two-sided-material"
 import { useChipMaterial } from "./materials/chip-material"
 import { useLogoTexture } from "./logo-decal"
+import { makeFillTexture } from "@/lib/fill-texture"
 
 const MODEL_URLS: Record<CardModelId, string> = {
   card_no_chip: "/models/card_no_chip.glb",
@@ -113,6 +114,8 @@ export function CardModel() {
   const orientation = useStudio((s) => s.orientation)
   const frontPbr = useStudio((s) => s.frontPbr)
   const backPbr = useStudio((s) => s.backPbr)
+  const frontFill = useStudio((s) => s.frontFill)
+  const backFill = useStudio((s) => s.backFill)
   const textureFlipH = useStudio((s) => s.textureFlipH)
   const textureFlipV = useStudio((s) => s.textureFlipV)
   const cardRoughness = useStudio((s) => s.cardRoughness)
@@ -164,6 +167,23 @@ export function CardModel() {
     }
   }, [gltf.scene])
 
+  // Build CanvasTextures for the user-controlled solid / gradient fill. Memo
+  // keyed on the primitive fields so dragging an unrelated slider does not
+  // re-allocate a GPU texture. When `type === "none"` the helper returns null
+  // and the material falls back to the preset PBR albedo.
+  const frontFillTex = useMemo(
+    () => makeFillTexture(frontFill),
+    [frontFill.type, frontFill.color1, frontFill.color2, frontFill.angle],
+  )
+  const backFillTex = useMemo(
+    () => makeFillTexture(backFill),
+    [backFill.type, backFill.color1, backFill.color2, backFill.angle],
+  )
+  // Dispose the previous CanvasTexture when the memo rebuilds, otherwise each
+  // color change would leak a 1024×640 texture into GPU memory.
+  useEffect(() => () => { frontFillTex?.dispose() }, [frontFillTex])
+  useEffect(() => () => { backFillTex?.dispose() }, [backFillTex])
+
   const cardMaterial = useTwoSidedPhysicalMaterial({
     front: frontPbr,
     back: backPbr,
@@ -177,6 +197,8 @@ export function CardModel() {
   flipV: textureFlipV,
   edgeColor: cardEdgeColor,
   edgeTint: cardEdgeTint,
+  frontAlbedoOverride: frontFillTex,
+  backAlbedoOverride: backFillTex,
   })
 
   const chipMaterial = useChipMaterial({

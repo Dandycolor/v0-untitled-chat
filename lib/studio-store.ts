@@ -151,13 +151,38 @@ export type StudioState = {
   presets: DesignPreset[]
   activePresetId: string | null
 
+  // Solid / gradient fill override — replaces the PBR albedo per side when active.
+  // Deliberately client-only (not persisted to Blob) because it's just a local
+  // color choice, not a design worth sharing across sessions.
+  frontFill: FillConfig
+  backFill: FillConfig
+
   // Setters
   set: <K extends keyof StudioState>(key: K, value: StudioState[K]) => void
   setMany: (patch: Partial<StudioState>) => void
   setFrontPbr: (patch: Partial<PbrMapSet>) => void
   setBackPbr: (patch: Partial<PbrMapSet>) => void
+  setFrontFill: (patch: Partial<FillConfig>) => void
+  setBackFill: (patch: Partial<FillConfig>) => void
   applyPreset: (preset: DesignPreset) => void
   setPresets: (presets: DesignPreset[]) => void
+}
+
+/**
+ * Local-only per-side solid / gradient fill config.
+ *
+ * - `none` lets the underlying PBR albedo (or preset design) show through — the
+ *   fill pipeline becomes a no-op.
+ * - `solid` paints `color1` uniformly.
+ * - `gradient` draws a linear gradient from `color1` to `color2` at `angle`
+ *   degrees (0° = left→right, 90° = bottom→top, counter-clockwise positive).
+ */
+export type FillConfig = {
+  type: "none" | "solid" | "gradient"
+  color1: string
+  color2: string
+  /** Gradient direction in degrees. Ignored for `solid`. */
+  angle: number
 }
 
 const DEFAULT_DOODLE_FRONT: PbrMapSet = {
@@ -247,10 +272,15 @@ export const useStudio = create<StudioState>((set) => ({
   presets: [],
   activePresetId: null,
 
+  frontFill: { type: "none", color1: "#6366f1", color2: "#ec4899", angle: 135 },
+  backFill: { type: "none", color1: "#6366f1", color2: "#ec4899", angle: 135 },
+
   set: (key, value) => set((s) => ({ ...s, [key]: value })),
   setMany: (patch) => set((s) => ({ ...s, ...patch })),
   setFrontPbr: (patch) => set((s) => ({ frontPbr: { ...s.frontPbr, ...patch } })),
   setBackPbr: (patch) => set((s) => ({ backPbr: { ...s.backPbr, ...patch } })),
+  setFrontFill: (patch) => set((s) => ({ frontFill: { ...s.frontFill, ...patch } })),
+  setBackFill: (patch) => set((s) => ({ backFill: { ...s.backFill, ...patch } })),
   applyPreset: (preset) =>
     set(() => ({
       activePresetId: preset.id,
