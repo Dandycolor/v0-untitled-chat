@@ -68,30 +68,58 @@ function useMaybeTexture(
       return
     }
     let cancelled = false
-    const loader = new THREE.TextureLoader()
-    loader.setCrossOrigin("anonymous")
-    loader.load(
-      resolved,
-      (t) => {
-        if (cancelled) {
-          t.dispose()
-          return
+
+    // Load via fetch → Blob → object URL instead of TextureLoader's direct
+    // Image path. TextureLoader sets `crossOrigin="anonymous"` on <img>, which in
+    // some Chrome cache scenarios (e.g. a previously-cached response that lacked
+    // ACAO headers) causes the browser to silently reject the image — the load
+    // just never resolves, so we'd stay on the previous texture forever. A plain
+    // fetch with mode:"cors" surfaces those errors and still lets us keep the
+    // texture same-origin (the object URL is from our own document), so the
+    // capture canvas stays untainted.
+    const ac = new AbortController()
+    ;(async () => {
+      try {
+        const res = await fetch(resolved, { mode: "cors", signal: ac.signal, cache: "force-cache" })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const blob = await res.blob()
+        if (cancelled) return
+        const objectUrl = URL.createObjectURL(blob)
+        const img = new Image()
+        // No crossOrigin attribute — the URL is blob: so it's same-origin.
+        img.decoding = "async"
+        img.onload = () => {
+          if (cancelled) {
+            URL.revokeObjectURL(objectUrl)
+            return
+          }
+          const t = new THREE.Texture(img)
+          t.colorSpace = colorSpace
+          t.wrapS = THREE.ClampToEdgeWrapping
+          t.wrapT = THREE.ClampToEdgeWrapping
+          t.anisotropy = 8
+          t.needsUpdate = true
+          // Revoke the object URL after the next tick — Three has already read
+          // the image data into the GPU by then.
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
+          setTex(t)
         }
-        t.colorSpace = colorSpace
-        t.wrapS = THREE.ClampToEdgeWrapping
-        t.wrapT = THREE.ClampToEdgeWrapping
-        t.anisotropy = 8
-        t.needsUpdate = true
-        setTex(t)
-      },
-      undefined,
-      (err) => {
-        console.log("[v0] texture load failed:", resolved, err)
+        img.onerror = (e) => {
+          console.log("[v0] texture decode failed:", resolved, e)
+          URL.revokeObjectURL(objectUrl)
+          if (!cancelled) setTex(fallback)
+        }
+        img.src = objectUrl
+      } catch (err) {
+        if ((err as Error)?.name === "AbortError") return
+        console.log("[v0] texture fetch failed:", resolved, err)
         if (!cancelled) setTex(fallback)
-      },
-    )
+      }
+    })()
+
     return () => {
       cancelled = true
+      ac.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolved, colorSpace, isNormal])
@@ -160,9 +188,13 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     mat.clearcoatRoughnessMap = frontRough.tex
     mat.clearcoatNormalScale = new THREE.Vector2(1, 1)
 
-    // Ensure Three's shader program cache never returns a stale blended program.
-    const cacheKey = `card-two-sided-${sideAxis}`
-    mat.customProgramCacheKey = () => cacheKey
+    // We intentionally do NOT set `customProgramCacheKey` to a constant here:
+    // doing so made Three reuse the very first compiled WebGL program across every
+    // subsequent material instance. Custom uniforms like `uFrontAlbedo` live on the
+    // material's own uniforms object, but in production (no StrictMode, no HMR) the
+    // first material's textures stayed bound to the shared program long after the user
+    // picked a different design — which manifested as "uploaded designs don't switch".
+    // Letting Three hash the modified shader source is cheap and correct.
 
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uFrontAlbedo = { value: frontAlbedo.tex }
