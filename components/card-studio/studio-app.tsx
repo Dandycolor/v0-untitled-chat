@@ -3,6 +3,8 @@
 import { CardCanvas } from "./card-canvas"
 import { CameraTelemetryHUD } from "./camera-telemetry"
 import { ControlPanel } from "./control-panel"
+import { TextureLoadingOverlay } from "./texture-loading-overlay"
+import { PresetPreloader } from "./preset-preloader"
 import { Toaster } from "@/components/ui/sonner"
 
 export function StudioApp() {
@@ -14,9 +16,11 @@ export function StudioApp() {
           <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
           Studio running
         </div>
+        <TextureLoadingOverlay />
         <CameraTelemetryHUD />
       </main>
       <ControlPanel />
+      <PresetPreloader />
       <Toaster position="bottom-left" richColors />
     </div>
   )

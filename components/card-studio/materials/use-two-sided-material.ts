@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import * as THREE from "three"
 import { resolveTextureUrl } from "@/lib/texture-url"
+import { fetchTextureBlob } from "@/lib/fetch-texture-blob"
+import { useTextureLoading } from "@/lib/texture-loading"
 import type { PbrMapSet } from "@/lib/studio-store"
 
 type Params = {
@@ -68,29 +70,36 @@ function useMaybeTexture(
       return
     }
     let cancelled = false
-
-    // Load via fetch → Blob → object URL instead of TextureLoader's direct
-    // Image path. TextureLoader sets `crossOrigin="anonymous"` on <img>, which in
-    // some Chrome cache scenarios (e.g. a previously-cached response that lacked
-    // ACAO headers) causes the browser to silently reject the image — the load
-    // just never resolves, so we'd stay on the previous texture forever. A plain
-    // fetch with mode:"cors" surfaces those errors and still lets us keep the
-    // texture same-origin (the object URL is from our own document), so the
-    // capture canvas stays untainted.
     const ac = new AbortController()
+
+    // Notify the global loading counter so the overlay can show progress.
+    // `start` bumps both `pending` and `total`; `note` only decrements
+    // `pending`, so the overlay can show "5 / 8 loaded" without collapsing
+    // to 0/0 immediately when something finishes.
+    useTextureLoading.getState().start()
+    let settled = false
+    const settle = () => {
+      if (settled) return
+      settled = true
+      useTextureLoading.getState().note(true)
+    }
+
     ;(async () => {
       try {
-        const res = await fetch(resolved, { mode: "cors", signal: ac.signal, cache: "force-cache" })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const blob = await res.blob()
+        // fetchTextureBlob owns: persistent Cache Storage lookup, 3-attempt
+        // retry with exponential backoff, and abort-signal propagation.
+        const blob = await fetchTextureBlob(resolved, ac.signal)
         if (cancelled) return
+
         const objectUrl = URL.createObjectURL(blob)
         const img = new Image()
-        // No crossOrigin attribute — the URL is blob: so it's same-origin.
+        // No crossOrigin attribute — the URL is blob: so it's same-origin
+        // and WebGL reads are never tainted (keeps screenshot capture working).
         img.decoding = "async"
         img.onload = () => {
           if (cancelled) {
             URL.revokeObjectURL(objectUrl)
+            settle()
             return
           }
           const t = new THREE.Texture(img)
@@ -99,27 +108,38 @@ function useMaybeTexture(
           t.wrapT = THREE.ClampToEdgeWrapping
           t.anisotropy = 8
           t.needsUpdate = true
-          // Revoke the object URL after the next tick — Three has already read
-          // the image data into the GPU by then.
+          // Revoke the object URL after the next tick — Three has already
+          // read the image data into the GPU by then.
           setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
           setTex(t)
+          settle()
         }
         img.onerror = (e) => {
           console.log("[v0] texture decode failed:", resolved, e)
           URL.revokeObjectURL(objectUrl)
           if (!cancelled) setTex(fallback)
+          settle()
         }
         img.src = objectUrl
       } catch (err) {
-        if ((err as Error)?.name === "AbortError") return
+        if ((err as Error)?.name === "AbortError") {
+          // Cancelled via effect cleanup — not a real failure, but we still
+          // need to drop the pending counter so the overlay doesn't get stuck.
+          settle()
+          return
+        }
         console.log("[v0] texture fetch failed:", resolved, err)
         if (!cancelled) setTex(fallback)
+        settle()
       }
     })()
 
     return () => {
       cancelled = true
       ac.abort()
+      // Defensive: if the async chain never reached a settle path before the
+      // component unmounted, make sure we don't leak a pending counter.
+      settle()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolved, colorSpace, isNormal])
