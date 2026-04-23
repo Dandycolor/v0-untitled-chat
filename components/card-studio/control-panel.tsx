@@ -14,6 +14,7 @@ import {
   Paintbrush,
 } from "lucide-react"
 import { useStudio, type CardModelId, type FillConfig, type HdrPreset, type ViewId } from "@/lib/studio-store"
+import { cn } from "@/lib/utils"
 import { VIEWS } from "./camera-rig"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
@@ -205,33 +206,37 @@ function FillSection({
   )
 }
 
-export function ControlPanel() {
-  const s = useStudio()
-
-  const onCapture = () => {
-    const fn = (window as unknown as { __captureCard?: () => void }).__captureCard
-    fn?.()
-  }
-
+/**
+ * Shared header rendered at the top of both desktop sidebar and mobile drawer.
+ */
+export function PanelHeader({ onCapture }: { onCapture: () => void }) {
   return (
-    <aside className="flex h-full w-[340px] shrink-0 flex-col border-l bg-sidebar text-sidebar-foreground">
-      <header className="flex items-center justify-between gap-2 border-b px-4 py-3">
-        <div className="flex flex-col">
-          <span className="text-sm font-semibold leading-tight">Card Material Studio</span>
-          <span className="text-[11px] text-muted-foreground">PBR · Blink · Logo · Chip</span>
-        </div>
-        <Button size="sm" onClick={onCapture} className="gap-1.5">
-          <Camera className="size-3.5" />
-          PNG
-        </Button>
-      </header>
+    <header className="flex items-center justify-between gap-2 border-b px-4 py-3">
+      <div className="flex flex-col">
+        <span className="text-sm font-semibold leading-tight">Card Material Studio</span>
+        <span className="text-[11px] text-muted-foreground">PBR · Blink · Logo · Chip</span>
+      </div>
+      <Button size="sm" onClick={onCapture} className="gap-1.5">
+        <Camera className="size-3.5" />
+        PNG
+      </Button>
+    </header>
+  )
+}
 
-      <ScrollArea className="min-h-0 flex-1 [&>[data-radix-scroll-area-viewport]]:max-h-full">
-        <Accordion
-          type="multiple"
-          defaultValue={["model", "designs", "fill", "card", "glare", "chip", "logo", "env", "capture"]}
-          className="px-0"
-        >
+/**
+ * The scrollable accordion body with all the studio controls. Used by both
+ * the desktop sidebar and the mobile bottom drawer.
+ */
+export function PanelBody({ className, onCapture }: { className?: string; onCapture: () => void }) {
+  const s = useStudio()
+  return (
+    <ScrollArea className={cn("min-h-0 flex-1 [&>[data-radix-scroll-area-viewport]]:max-h-full", className)}>
+      <Accordion
+        type="multiple"
+        defaultValue={["model", "designs", "fill", "card", "glare", "chip", "logo", "env", "capture"]}
+        className="px-0"
+      >
           <AccordionItem value="model" className="border-b">
             <SectionTrigger icon={<Box className="size-3.5" />} title="Model & View" />
             <AccordionContent className="space-y-4 px-4 pb-4">
@@ -931,6 +936,24 @@ export function ControlPanel() {
           </AccordionItem>
         </Accordion>
       </ScrollArea>
+  )
+}
+
+/**
+ * Desktop sidebar — hidden on mobile, visible from md breakpoint.
+ */
+export function ControlPanel() {
+  const onCapture = () => {
+    const fn = (window as unknown as { __captureCard?: () => void }).__captureCard
+    fn?.()
+  }
+
+  return (
+    <aside className="hidden h-full w-[340px] shrink-0 flex-col border-l bg-sidebar text-sidebar-foreground md:flex">
+      <PanelHeader onCapture={onCapture} />
+      <PanelBody onCapture={onCapture} />
     </aside>
   )
 }
+
+
