@@ -227,11 +227,15 @@ export function PanelHeader({ onCapture }: { onCapture: () => void }) {
 /**
  * The scrollable accordion body with all the studio controls. Used by both
  * the desktop sidebar and the mobile bottom drawer.
+ *
+ * Uses a simple div with overflow-y-auto which works reliably on both desktop
+ * and mobile touch devices. The previous ScrollArea caused issues with Vaul
+ * drawer touch handling.
  */
 export function PanelBody({ className, onCapture }: { className?: string; onCapture: () => void }) {
   const s = useStudio()
   return (
-    <ScrollArea className={cn("min-h-0 flex-1 [&>[data-radix-scroll-area-viewport]]:max-h-full", className)}>
+    <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", className)}>
       <Accordion
         type="multiple"
         defaultValue={["model", "designs", "fill", "card", "glare", "chip", "logo", "env", "capture"]}
@@ -935,7 +939,7 @@ export function PanelBody({ className, onCapture }: { className?: string; onCapt
             </AccordionContent>
           </AccordionItem>
         </Accordion>
-      </ScrollArea>
+      </div>
   )
 }
 

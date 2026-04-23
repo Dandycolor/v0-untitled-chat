@@ -15,8 +15,8 @@ import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
 /**
  * Mobile-only bottom drawer with all studio controls. Shows a floating action
  * button (FAB) in the bottom-right corner; tapping it slides up the control
- * panel from the bottom edge. The drawer can be dismissed by swiping down,
- * tapping the overlay, or pressing the X button.
+ * panel from the bottom edge. The drawer can be dismissed by swiping down on
+ * the handle area, tapping the overlay, or pressing the X button.
  */
 export function MobileControlDrawer() {
   const [open, setOpen] = useState(false)
@@ -40,8 +40,8 @@ export function MobileControlDrawer() {
         </Button>
       )}
 
-      <Drawer open={open} onOpenChange={setOpen}>
-        <DrawerContent className="max-h-[85dvh] md:hidden">
+      <Drawer open={open} onOpenChange={setOpen} scrollLockTimeout={0}>
+        <DrawerContent className="flex max-h-[85dvh] flex-col md:hidden">
           <VisuallyHidden>
             <DrawerTitle>Card Studio Settings</DrawerTitle>
           </VisuallyHidden>
@@ -58,8 +58,20 @@ export function MobileControlDrawer() {
             </Button>
           </DrawerClose>
 
+          {/* Header is draggable for closing */}
           <PanelHeader onCapture={onCapture} />
-          <PanelBody className="max-h-[calc(85dvh-80px)]" onCapture={onCapture} />
+          
+          {/*
+            Scrollable body wrapped with data-vaul-no-drag so touch events
+            inside this area scroll the content instead of closing the drawer.
+            This is the key to allowing full scroll on mobile.
+          */}
+          <div data-vaul-no-drag className="min-h-0 flex-1 overflow-hidden">
+            <PanelBody 
+              className="h-full max-h-[calc(85dvh-120px)] overflow-y-auto" 
+              onCapture={onCapture} 
+            />
+          </div>
         </DrawerContent>
       </Drawer>
     </>
