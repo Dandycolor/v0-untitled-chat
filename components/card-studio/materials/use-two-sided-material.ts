@@ -377,6 +377,28 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         "texture2D( aoMap, vAoMapUv ).r",
         "CARD_AO_SAMPLE",
       )
+
+      // --- Normal map bypass for flat mode. When flat is active, skip the normal
+      // perturbation entirely so the surface renders perfectly smooth.
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <normal_fragment_maps>",
+        `#include <normal_fragment_maps>
+        // Override normal perturbation if flat mode is active for current side
+        {
+          float csBnorm = cs_sideBlend();
+          int currentFlatN = (csBnorm > 0.5) ? uFrontFlat : uBackFlat;
+          if (currentFlatN == 1) {
+            // Reset to geometric normal, ignoring any normal map perturbation
+            normal = normalize(vNormal);
+            #ifdef USE_TANGENT
+              // Also reset for clearcoat if present
+              #ifdef USE_CLEARCOAT_NORMALMAP
+                clearcoatNormal = geometryNormal;
+              #endif
+            #endif
+          }
+        }`,
+      )
     }
 
     return mat
