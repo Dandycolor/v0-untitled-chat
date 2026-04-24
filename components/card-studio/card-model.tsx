@@ -6,6 +6,7 @@ import { useGLTF } from "@react-three/drei"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { useStudio, type CardModelId } from "@/lib/studio-store"
 import { useTwoSidedPhysicalMaterial } from "./materials/use-two-sided-material"
+import { useSimpleFillMaterial } from "./materials/use-simple-fill-material"
 import { useChipMaterial } from "./materials/chip-material"
 import { useLogoTexture } from "./logo-decal"
 import { makeFillTexture } from "@/lib/fill-texture"
@@ -184,24 +185,34 @@ export function CardModel() {
   useEffect(() => () => { frontFillTex?.dispose() }, [frontFillTex])
   useEffect(() => () => { backFillTex?.dispose() }, [backFillTex])
 
-  const cardMaterial = useTwoSidedPhysicalMaterial({
+  // Determine if we're in "simple fill mode" — both sides using solid/gradient
+  const isSimpleMode = frontFill.type !== "none" && backFill.type !== "none"
+
+  // PBR material (used when at least one side shows a design)
+  const pbrMaterial = useTwoSidedPhysicalMaterial({
     front: frontPbr,
     back: backPbr,
     roughness: cardRoughness,
     metalness: cardMetalness,
     normalScale: cardNormalScale,
     clearcoat: cardClearcoat,
-  clearcoatRoughness: cardClearcoatRoughness,
-  sideAxis,
-  flipH: textureFlipH,
-  flipV: textureFlipV,
-  edgeColor: cardEdgeColor,
-  edgeTint: cardEdgeTint,
-  frontAlbedoOverride: frontFillTex,
-  backAlbedoOverride: backFillTex,
-  frontFlat: frontFill.type !== "none",
-  backFlat: backFill.type !== "none",
+    clearcoatRoughness: cardClearcoatRoughness,
+    sideAxis,
+    flipH: textureFlipH,
+    flipV: textureFlipV,
+    edgeColor: cardEdgeColor,
+    edgeTint: cardEdgeTint,
+    frontAlbedoOverride: frontFillTex,
+    backAlbedoOverride: backFillTex,
+    frontFlat: frontFill.type !== "none",
+    backFlat: backFill.type !== "none",
   })
+
+  // Simple fill material (used when both sides are solid/gradient)
+  const simpleMaterial = useSimpleFillMaterial(frontFill, backFill, sideAxis)
+
+  // Pick the right material based on mode
+  const cardMaterial = isSimpleMode ? simpleMaterial : pbrMaterial
 
   const chipMaterial = useChipMaterial({
     color: chipColor,
