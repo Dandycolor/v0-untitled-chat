@@ -375,8 +375,7 @@ export function PanelBody({ className, onCapture }: { className?: string; onCapt
             <SectionTrigger icon={<Paintbrush className="size-3.5" />} title="Solid fill" />
             <AccordionContent className="space-y-5 px-4 pb-4">
               <p className="text-xs text-muted-foreground">
-                Replace the PBR design albedo with a solid color or linear gradient per side.
-                Normal, roughness and metalness maps stay active, so the surface still reacts to light.
+                Paint the card with a flat color or gradient. PBR textures are ignored — just pure color fill.
               </p>
               <FillSection label="Front" value={s.frontFill} onChange={s.setFrontFill} />
               <Separator />

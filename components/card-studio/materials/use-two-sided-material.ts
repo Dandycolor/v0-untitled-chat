@@ -32,6 +32,12 @@ type Params = {
    */
   frontAlbedoOverride?: THREE.Texture | null
   backAlbedoOverride?: THREE.Texture | null
+  /**
+   * When true, the front face renders as a flat color/gradient — no PBR
+   * (roughness, metalness, AO, normal) processing, just the albedo texture.
+   */
+  frontFlat?: boolean
+  backFlat?: boolean
   }
 
 // Module-level 1x1 neutral textures. Created lazily once the client is running.
@@ -174,6 +180,8 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     edgeTint,
     frontAlbedoOverride,
     backAlbedoOverride,
+    frontFlat,
+    backFlat,
   } = params
 
   const frontAlbedo = useMaybeTexture(front.albedo, THREE.SRGBColorSpace)
@@ -247,6 +255,8 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
       shader.uniforms.uFrontAo = { value: frontAo.tex }
       shader.uniforms.uBackAo = { value: backAo.tex }
       shader.uniforms.uSideAxis = { value: sideAxis }
+      shader.uniforms.uFrontFlat = { value: frontFlat ? 1 : 0 }
+      shader.uniforms.uBackFlat = { value: backFlat ? 1 : 0 }
       // Edge tint: uniform references that we live-update from outside the shader closure
       // so changing the color / tint slider doesn't force a shader recompile.
       const edgeColorUniform = { value: new THREE.Color(edgeColor) }
@@ -281,6 +291,8 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         uniform sampler2D uFrontAo;
         uniform sampler2D uBackAo;
         uniform int uSideAxis;
+        uniform int uFrontFlat;
+        uniform int uBackFlat;
         uniform vec3 uEdgeColor;
         uniform float uEdgeTint;
         float cs_sideBlend() {
@@ -311,41 +323,55 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         #endif`,
       )
 
-      // --- Roughness blend (G channel)
+      // --- Roughness blend (G channel). When flat mode is active for a side,
+      // use base roughness (1.0) instead of sampling the PBR map.
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <roughnessmap_fragment>",
         `float roughnessFactor = roughness;
         #ifdef USE_ROUGHNESSMAP
           float csBrough = cs_sideBlend();
-          vec4 rFront = texture2D(uFrontRough, vRoughnessMapUv);
-          vec4 rBack = texture2D(uBackRough, vRoughnessMapUv);
-          vec4 texelRoughness = mix(rBack, rFront, csBrough);
-          roughnessFactor *= texelRoughness.g;
+          // Check if current side is in flat mode
+          int currentFlat = (csBrough > 0.5) ? uFrontFlat : uBackFlat;
+          if (currentFlat == 0) {
+            vec4 rFront = texture2D(uFrontRough, vRoughnessMapUv);
+            vec4 rBack = texture2D(uBackRough, vRoughnessMapUv);
+            vec4 texelRoughness = mix(rBack, rFront, csBrough);
+            roughnessFactor *= texelRoughness.g;
+          }
         #endif`,
       )
 
-      // --- Metalness blend (B channel)
+      // --- Metalness blend (B channel). Flat mode = no metalness (0).
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <metalnessmap_fragment>",
         `float metalnessFactor = metalness;
         #ifdef USE_METALNESSMAP
           float csBmetal = cs_sideBlend();
-          vec4 mFront = texture2D(uFrontMetal, vMetalnessMapUv);
-          vec4 mBack = texture2D(uBackMetal, vMetalnessMapUv);
-          vec4 texelMetalness = mix(mBack, mFront, csBmetal);
-          metalnessFactor *= texelMetalness.b;
+          int currentFlatM = (csBmetal > 0.5) ? uFrontFlat : uBackFlat;
+          if (currentFlatM == 0) {
+            vec4 mFront = texture2D(uFrontMetal, vMetalnessMapUv);
+            vec4 mBack = texture2D(uBackMetal, vMetalnessMapUv);
+            vec4 texelMetalness = mix(mBack, mFront, csBmetal);
+            metalnessFactor *= texelMetalness.b;
+          } else {
+            metalnessFactor = 0.0;
+          }
         #endif`,
       )
 
-      // --- AO blend (R channel). We leave Three's aomap_fragment logic in place and
-      // only override the raw texture sample call so specular occlusion still runs.
+      // --- AO blend (R channel). Flat mode = no AO darkening (1.0).
       shader.fragmentShader = shader.fragmentShader.replace(
         "#ifdef USE_AOMAP",
         `#ifdef USE_AOMAP
           float csBao = cs_sideBlend();
-          vec4 aFront = texture2D(uFrontAo, vAoMapUv);
-          vec4 aBack = texture2D(uBackAo, vAoMapUv);
-          #define CARD_AO_SAMPLE mix(aBack, aFront, csBao).r`,
+          int currentFlatAo = (csBao > 0.5) ? uFrontFlat : uBackFlat;
+          float aoSample = 1.0;
+          if (currentFlatAo == 0) {
+            vec4 aFront = texture2D(uFrontAo, vAoMapUv);
+            vec4 aBack = texture2D(uBackAo, vAoMapUv);
+            aoSample = mix(aBack, aFront, csBao).r;
+          }
+          #define CARD_AO_SAMPLE aoSample`,
       )
       shader.fragmentShader = shader.fragmentShader.replaceAll(
         "texture2D( aoMap, vAoMapUv ).r",

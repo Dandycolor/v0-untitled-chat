@@ -199,6 +199,8 @@ export function CardModel() {
   edgeTint: cardEdgeTint,
   frontAlbedoOverride: frontFillTex,
   backAlbedoOverride: backFillTex,
+  frontFlat: frontFill.type !== "none",
+  backFlat: backFill.type !== "none",
   })
 
   const chipMaterial = useChipMaterial({
