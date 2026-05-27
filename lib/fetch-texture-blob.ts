@@ -64,12 +64,13 @@ export async function fetchTextureBlob(
       const hit = await cache.match(url)
       if (hit) {
         const blob = await hit.blob()
-        // If the cached blob is empty or has wrong type, ignore it
-        if (blob.size === 0 || !blob.type.startsWith("image/")) {
-          try { await cache.delete(url) } catch { /* ignore */ }
-        } else {
+        // If the cached blob is valid image, return it
+        if (blob.size > 0 && blob.type.startsWith("image/")) {
           return blob
         }
+        // Otherwise delete bad cache entry and continue to network
+        console.log("[v0] fetchTextureBlob: bad cache entry, deleting:", url, blob.type, blob.size)
+        try { await cache.delete(url) } catch { /* ignore */ }
       }
     } catch {
       /* ignore cache read errors, fall through to network */
@@ -94,6 +95,11 @@ export async function fetchTextureBlob(
         throw new Error(`HTTP ${res.status} for ${url}`)
       }
       const blob = await res.blob()
+      // Verify we got an image, not an error page
+      if (!blob.type.startsWith("image/")) {
+        console.log("[v0] fetchTextureBlob: got non-image response:", url, blob.type, blob.size)
+        throw new Error(`Non-image response (${blob.type}) for ${url}`)
+      }
       // Clone into Cache Storage AFTER we have a valid blob
       if (cache && blob.size > 0 && blob.type.startsWith("image/")) {
         try {
