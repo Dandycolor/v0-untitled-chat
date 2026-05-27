@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Check, Edit2, Image as ImageIcon, Loader2, Plus, Save, Trash2, Upload, X } from "lucide-react"
+import { ChevronDown, Check, Edit2, Image as ImageIcon, Loader2, Plus, Save, Trash2, Upload, X } from "lucide-react"
 import { useStudio, MATERIAL_KEYS, type DesignPreset, type PresetMaterial } from "@/lib/studio-store"
 import {
   loadPresets,
@@ -153,44 +153,308 @@ export function PresetManager() {
           const active = activePresetId === p.id
           const hasMaterial = !!p.material
           return (
-            <div
+            <PresetRow
               key={p.id}
-              className="flex items-center justify-between gap-2 rounded-md border bg-card px-2.5 py-2"
-            >
-              <button
-                type="button"
-                onClick={() => applyPreset(p)}
-                className="flex min-w-0 flex-1 items-center gap-2 text-left"
-              >
-                <span
-                  className={`flex size-4 shrink-0 items-center justify-center rounded-full border ${active ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}
-                >
-                  {active && <Check className="size-3" />}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm">{p.name}</span>
-                {hasMaterial && (
-                  <span
-                    className="shrink-0 rounded-full bg-secondary px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-secondary-foreground"
-                    title="Includes material settings"
-                  >
-                    M
-                  </span>
-                )}
-              </button>
-              <EditPresetDialog preset={p} onUpdated={refresh} snapshotMaterial={snapshotMaterial} />
-              <Button
-                size="icon"
-                variant="ghost"
-                className="size-7"
-                onClick={() => onDelete(p.id)}
-                aria-label="Delete preset"
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
-            </div>
+              preset={p}
+              active={active}
+              onApply={() => applyPreset(p)}
+              onDelete={() => onDelete(p.id)}
+              onEdit={() => {}}
+              snapshotMaterial={snapshotMaterial}
+            />
           )
         })}
       </div>
+    </div>
+  )
+}
+
+/**
+ * A single preset row with expand/collapse to show material editing sliders.
+ */
+function PresetRow({
+  preset,
+  active,
+  onApply,
+  onDelete,
+  snapshotMaterial,
+}: {
+  preset: DesignPreset
+  active: boolean
+  onApply: () => void
+  onDelete: () => void
+  snapshotMaterial: () => PresetMaterial
+}) {
+  const hasMaterial = !!preset.material
+  const setStudioState = useStudio((s) => s.set)
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2 rounded-md border bg-card px-2.5 py-2">
+        <button
+          type="button"
+          onClick={onApply}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          <span
+            className={`flex size-4 shrink-0 items-center justify-center rounded-full border ${active ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}
+          >
+            {active && <Check className="size-3" />}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-sm">{preset.name}</span>
+          {hasMaterial && (
+            <span
+              className="shrink-0 rounded-full bg-secondary px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-secondary-foreground"
+              title="Includes material settings"
+            >
+              M
+            </span>
+          )}
+        </button>
+
+        {/* Expand button for material editing */}
+        {hasMaterial && (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-7"
+            onClick={() => setExpanded(!expanded)}
+            title={expanded ? "Collapse" : "Expand to edit material"}
+          >
+            <ChevronDown
+              className={`size-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
+            />
+          </Button>
+        )}
+
+        {/* Edit textures button */}
+        <EditPresetDialog preset={preset} snapshotMaterial={snapshotMaterial} />
+
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-7"
+          onClick={onDelete}
+          aria-label="Delete preset"
+        >
+          <Trash2 className="size-3.5" />
+        </Button>
+      </div>
+
+      {/* Expanded material editing panel */}
+      {expanded && hasMaterial && (
+        <div className="space-y-2.5 rounded-md border bg-muted/30 p-3">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Edit material
+          </p>
+
+          <MaterialSliders preset={preset} setStudioState={setStudioState} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Material editing sliders for an expanded preset.
+ */
+function MaterialSliders({
+  preset,
+  setStudioState,
+}: {
+  preset: DesignPreset
+  setStudioState: (key: string, value: unknown) => void
+}) {
+  if (!preset.material) return null
+
+  const m = preset.material
+
+  return (
+    <div className="space-y-2">
+      <SliderRow
+        label="Roughness"
+        value={m.cardRoughness}
+        min={0}
+        max={1}
+        step={0.01}
+        onChange={(v) => setStudioState("cardRoughness", v)}
+      />
+      <SliderRow
+        label="Metalness"
+        value={m.cardMetalness}
+        min={0}
+        max={1}
+        step={0.01}
+        onChange={(v) => setStudioState("cardMetalness", v)}
+      />
+      <SliderRow
+        label="Normal intensity"
+        value={m.cardNormalScale}
+        min={0}
+        max={2}
+        step={0.01}
+        onChange={(v) => setStudioState("cardNormalScale", v)}
+      />
+      <SliderRow
+        label="Clearcoat"
+        value={m.cardClearcoat}
+        min={0}
+        max={1}
+        step={0.01}
+        onChange={(v) => setStudioState("cardClearcoat", v)}
+      />
+      <SliderRow
+        label="Clearcoat roughness"
+        value={m.cardClearcoatRoughness}
+        min={0}
+        max={1}
+        step={0.01}
+        onChange={(v) => setStudioState("cardClearcoatRoughness", v)}
+      />
+      <SliderRow
+        label="Edge tint"
+        value={m.cardEdgeTint}
+        min={0}
+        max={1}
+        step={0.01}
+        onChange={(v) => setStudioState("cardEdgeTint", v)}
+      />
+
+      {/* Glare */}
+      {m.glareMode !== "none" && (
+        <>
+          <SliderRow
+            label="Glare intensity"
+            value={m.glareIntensity}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(v) => setStudioState("glareIntensity", v)}
+          />
+          <SliderRow
+            label="Glare width"
+            value={m.glareWidth}
+            min={0.1}
+            max={3}
+            step={0.1}
+            onChange={(v) => setStudioState("glareWidth", v)}
+          />
+          <SliderRow
+            label="Glare softness"
+            value={m.glareSoftness}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(v) => setStudioState("glareSoftness", v)}
+          />
+        </>
+      )}
+
+      {/* Holographic */}
+      {m.holoEnabled && (
+        <>
+          <SliderRow
+            label="Holo intensity"
+            value={m.holoIntensity}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(v) => setStudioState("holoIntensity", v)}
+          />
+          <SliderRow
+            label="Holo scale"
+            value={m.holoScale}
+            min={0.5}
+            max={5}
+            step={0.1}
+            onChange={(v) => setStudioState("holoScale", v)}
+          />
+          <SliderRow
+            label="Holo hue shift"
+            value={m.holoHueShift}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(v) => setStudioState("holoHueShift", v)}
+          />
+        </>
+      )}
+
+      {/* Foil */}
+      {m.foilEnabled && (
+        <>
+          <SliderRow
+            label="Foil sheen"
+            value={m.foilSheen}
+            min={0}
+            max={2}
+            step={0.01}
+            onChange={(v) => setStudioState("foilSheen", v)}
+          />
+          <SliderRow
+            label="Foil sparkle"
+            value={m.foilSparkle}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(v) => setStudioState("foilSparkle", v)}
+          />
+          <SliderRow
+            label="Foil density"
+            value={m.foilDensity}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(v) => setStudioState("foilDensity", v)}
+          />
+          <SliderRow
+            label="Foil sparkle size"
+            value={m.foilSparkleSize}
+            min={0.5}
+            max={3}
+            step={0.1}
+            onChange={(v) => setStudioState("foilSparkleSize", v)}
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Simple slider row component.
+ */
+function SliderRow({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  step: number
+  onChange: (v: number) => void
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <label className="text-[11px] text-muted-foreground flex-shrink-0">{label}</label>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="flex-1 h-1.5"
+      />
+      <span className="text-[10px] font-mono text-muted-foreground w-10 text-right">
+        {value.toFixed(2)}
+      </span>
     </div>
   )
 }
@@ -450,15 +714,13 @@ function ChannelRow({
 }
 
 /**
- * Dialog to edit preset name and optionally update its material settings.
+ * Dialog to edit preset name, replace textures, and update material settings.
  */
 function EditPresetDialog({
   preset,
-  onUpdated,
   snapshotMaterial,
 }: {
   preset: DesignPreset
-  onUpdated: () => void
   snapshotMaterial: () => PresetMaterial
 }) {
   const presets = useStudio((s) => s.presets)
@@ -468,6 +730,15 @@ function EditPresetDialog({
   const [editName, setEditName] = useState(preset.name)
   const [includeMaterial, setIncludeMaterial] = useState(!!preset.material)
   const [updating, setUpdating] = useState(false)
+  const [front, setFront] = useState<SideFiles>({})
+  const [back, setBack] = useState<SideFiles>({})
+
+  const totalCount = Object.keys(front).length + Object.keys(back).length
+
+  const resetTextures = () => {
+    setFront({})
+    setBack({})
+  }
 
   const handleSave = async () => {
     if (!editName.trim()) {
@@ -477,7 +748,7 @@ function EditPresetDialog({
 
     setUpdating(true)
     try {
-      // Save updated name and optionally new material
+      // Save updated name, textures, and optionally new material
       const updatedPreset: DesignPreset = {
         ...preset,
         name: editName.trim(),
@@ -488,8 +759,8 @@ function EditPresetDialog({
       await savePreset({
         id: preset.id,
         name: updatedPreset.name,
-        frontFiles: {},
-        backFiles: {},
+        frontFiles: front as Record<string, File>,
+        backFiles: back as Record<string, File>,
         material: updatedPreset.material,
       })
 
@@ -498,6 +769,7 @@ function EditPresetDialog({
 
       toast.success("Preset updated")
       setOpen(false)
+      resetTextures()
     } catch (err) {
       console.error("[v0] preset update error:", err)
       toast.error("Failed to update preset")
@@ -513,7 +785,7 @@ function EditPresetDialog({
           size="icon"
           variant="ghost"
           className="size-7"
-          aria-label="Edit preset"
+          aria-label="Edit preset textures"
         >
           <Edit2 className="size-3.5" />
         </Button>
@@ -522,11 +794,11 @@ function EditPresetDialog({
         <DialogHeader>
           <DialogTitle>Edit Design</DialogTitle>
           <DialogDescription>
-            Update the preset name and material settings.
+            Update the preset name, replace textures, and material settings.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto">
           <div className="space-y-2">
             <Label htmlFor="preset-name" className="text-sm">
               Preset name
@@ -540,7 +812,21 @@ function EditPresetDialog({
             />
           </div>
 
-          {/* Show current material if it exists */}
+          {/* Texture replacement */}
+          <div className="space-y-2">
+            <Label className="text-sm">Replace textures (optional)</Label>
+            <div className="grid grid-cols-1 gap-3">
+              <SidePanel label="Front" side="front" files={front} onChange={setFront} />
+              <SidePanel label="Back" side="back" files={back} onChange={setBack} />
+            </div>
+            {totalCount > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {totalCount} file{totalCount === 1 ? "" : "s"} ready to replace.
+              </p>
+            )}
+          </div>
+
+          {/* Current material info */}
           {preset.material && (
             <div className="space-y-2 rounded-md border bg-muted/20 p-2.5">
               <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
