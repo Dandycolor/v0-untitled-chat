@@ -63,7 +63,15 @@ export async function fetchTextureBlob(
     try {
       const hit = await cache.match(url)
       if (hit) {
-        return await hit.blob()
+        const blob = await hit.blob()
+        console.log("[v0] cache hit for:", url, "size:", blob.size, "type:", blob.type)
+        // If the cached blob is empty or has wrong type, ignore it
+        if (blob.size === 0 || !blob.type.startsWith("image/")) {
+          console.log("[v0] cache returned invalid blob, deleting and fetching fresh")
+          try { await cache.delete(url) } catch { /* ignore */ }
+        } else {
+          return blob
+        }
       }
     } catch {
       /* ignore cache read errors, fall through to network */
@@ -87,16 +95,21 @@ export async function fetchTextureBlob(
       if (!res.ok) {
         throw new Error(`HTTP ${res.status} for ${url}`)
       }
-      // Clone into Cache Storage BEFORE reading the body, otherwise the body
-      // stream is consumed and `cache.put` gets an empty response.
-      if (cache) {
+      const blob = await res.blob()
+      console.log("[v0] network fetch for:", url, "size:", blob.size, "type:", blob.type)
+      // Clone into Cache Storage AFTER we have a valid blob
+      if (cache && blob.size > 0 && blob.type.startsWith("image/")) {
         try {
-          await cache.put(url, res.clone())
+          // Re-create response from blob for caching
+          const cacheRes = new Response(blob, {
+            headers: { "Content-Type": blob.type },
+          })
+          await cache.put(url, cacheRes)
         } catch {
           /* cache writes are best-effort */
         }
       }
-      return await res.blob()
+      return blob
     } catch (err) {
       if ((err as DOMException)?.name === "AbortError") throw err
       lastError = err

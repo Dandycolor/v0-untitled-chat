@@ -103,6 +103,7 @@ function useMaybeTexture(
         // retry with exponential backoff, and abort-signal propagation.
         const blob = await fetchTextureBlob(resolved, ac.signal)
         if (cancelled) return
+        console.log("[v0] got blob for:", resolved, "size:", blob.size, "type:", blob.type)
 
         const objectUrl = URL.createObjectURL(blob)
         const img = new Image()
