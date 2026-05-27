@@ -36,7 +36,7 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
       metalness,
       roughness,
       anisotropy,
-      anisotropyRotation: Math.PI * 0.25,
+      anisotropyRotation: 0, // 0 = horizontal brushed texture
       envMapIntensity: 1.4,
       clearcoat: 0.2,
       clearcoatRoughness: 0.3,
