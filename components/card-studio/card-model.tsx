@@ -123,12 +123,15 @@ function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAx
       const isBack = eCenterAxis < bodyCenterAxis
       e.role = "body"
       ensurePlanarUv(e.mesh, sideAxis, isBack)
-      // Don't force flat normals - it breaks edge lighting on curved/rounded edges
+      // Force flat normals on these flat planes so cs_sideBlend() correctly detects
+      // which side they represent. These are thin planar meshes, not the main body
+      // with rounded edges.
+      forceFlatNormals(e.mesh, sideAxis, isBack ? -1 : 1)
     }
   }
 
   ensurePlanarUv(body.mesh, sideAxis)
-  // Don't force flat normals on body - it breaks edge lighting on rounded corners
+  // Don't force flat normals on main body - it has rounded edges that need proper normals
 
   return { analyzed: entries, sideAxis }
 }
