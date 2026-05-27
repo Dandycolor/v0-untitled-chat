@@ -37,9 +37,9 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
       roughness,
       anisotropy: 0, // Disable anisotropy to ensure uniform highlights across all chip elements
       anisotropyRotation: 0,
-      envMapIntensity: 1.4,
-      clearcoat: 0.2,
-      clearcoatRoughness: 0.3,
+      envMapIntensity: 0.8,
+      clearcoat: 0,
+      clearcoatRoughness: 0,
     })
 
     // Unique cache key so Three never reuses a stale compiled program.

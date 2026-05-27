@@ -225,12 +225,11 @@ export function CardModel() {
         mesh.material = cardMaterial
       } else if (role === "chip") {
         mesh.material = chipMaterial
-        // Force all chip elements to have the same flat normals pointing toward +sideAxis.
-        // This ensures uniform lighting/highlights across all chip pads (center EMV + sides).
-        forceFlatNormals(mesh, sideAxis, 1)
+        // Don't force flat normals on chip - it breaks edge lighting.
+        // World-space noise coordinates ensure uniform pattern across all chip elements.
       }
     })
-  }, [analyzed, cardMaterial, chipMaterial, sideAxis])
+  }, [analyzed, cardMaterial, chipMaterial])
 
   const logoTexture = useLogoTexture()
 
