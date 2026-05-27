@@ -104,6 +104,19 @@ export function PresetManager() {
     }
   }
 
+  // Update a single material property for a specific preset (independent per preset)
+  const handleUpdateMaterial = (presetId: string, key: string, value: number) => {
+    setPresets(
+      presets.map((p) => {
+        if (p.id !== presetId || !p.material) return p
+        const updatedMaterial = { ...p.material, [key]: value }
+        // Persist to storage
+        updatePresetMaterial(presetId, updatedMaterial)
+        return { ...p, material: updatedMaterial }
+      }),
+    )
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
@@ -152,7 +165,6 @@ export function PresetManager() {
       <div className="flex flex-col gap-1.5">
         {presets.map((p) => {
           const active = activePresetId === p.id
-          const hasMaterial = !!p.material
           return (
             <PresetRow
               key={p.id}
@@ -160,7 +172,7 @@ export function PresetManager() {
               active={active}
               onApply={() => applyPreset(p)}
               onDelete={() => onDelete(p.id)}
-              onEdit={() => {}}
+              onUpdateMaterial={handleUpdateMaterial}
               snapshotMaterial={snapshotMaterial}
             />
           )
@@ -178,17 +190,22 @@ function PresetRow({
   active,
   onApply,
   onDelete,
+  onUpdateMaterial,
   snapshotMaterial,
 }: {
   preset: DesignPreset
   active: boolean
   onApply: () => void
   onDelete: () => void
+  onUpdateMaterial: (presetId: string, key: string, value: number) => void
   snapshotMaterial: () => PresetMaterial
 }) {
   const hasMaterial = !!preset.material
-  const setStudioState = useStudio((s) => s.set)
   const [expanded, setExpanded] = useState(false)
+
+  const handleMaterialChange = (key: string, value: number) => {
+    onUpdateMaterial(preset.id, key, value)
+  }
 
   return (
     <div className="space-y-1.5">
@@ -250,7 +267,7 @@ function PresetRow({
             Edit material
           </p>
 
-          <MaterialSliders preset={preset} setStudioState={setStudioState} />
+          <MaterialSliders preset={preset} onMaterialChange={handleMaterialChange} />
         </div>
       )}
     </div>
@@ -259,40 +276,21 @@ function PresetRow({
 
 /**
  * Material editing sliders for an expanded preset.
+ * Uses LOCAL state for each preset - changes are independent per preset.
  * For Simple presets: only Roughness and Clearcoat.
  * For PBR presets: full set of sliders.
  */
 function MaterialSliders({
   preset,
-  setStudioState,
+  onMaterialChange,
 }: {
   preset: DesignPreset
-  setStudioState: (key: string, value: unknown) => void
+  onMaterialChange: (key: string, value: number) => void
 }) {
   if (!preset.material) return null
 
   const isSimple = preset.type === "simple"
-
-  // Read current values from store, not from preset snapshot
-  const cardRoughness = useStudio((s) => s.cardRoughness)
-  const cardMetalness = useStudio((s) => s.cardMetalness)
-  const cardNormalScale = useStudio((s) => s.cardNormalScale)
-  const cardClearcoat = useStudio((s) => s.cardClearcoat)
-  const cardClearcoatRoughness = useStudio((s) => s.cardClearcoatRoughness)
-  const cardEdgeTint = useStudio((s) => s.cardEdgeTint)
-  const glareMode = useStudio((s) => s.glareMode)
-  const glareIntensity = useStudio((s) => s.glareIntensity)
-  const glareWidth = useStudio((s) => s.glareWidth)
-  const glareSoftness = useStudio((s) => s.glareSoftness)
-  const holoEnabled = useStudio((s) => s.holoEnabled)
-  const holoIntensity = useStudio((s) => s.holoIntensity)
-  const holoScale = useStudio((s) => s.holoScale)
-  const holoHueShift = useStudio((s) => s.holoHueShift)
-  const foilEnabled = useStudio((s) => s.foilEnabled)
-  const foilSheen = useStudio((s) => s.foilSheen)
-  const foilSparkle = useStudio((s) => s.foilSparkle)
-  const foilDensity = useStudio((s) => s.foilDensity)
-  const foilSparkleSize = useStudio((s) => s.foilSparkleSize)
+  const m = preset.material
 
   // Simple preset: only 2 sliders
   if (isSimple) {
@@ -300,19 +298,19 @@ function MaterialSliders({
       <div className="space-y-2">
         <SliderRow
           label="Roughness"
-          value={cardRoughness}
+          value={m.cardRoughness}
           min={0}
           max={1}
           step={0.01}
-          onChange={(v) => setStudioState("cardRoughness", v)}
+          onChange={(v) => onMaterialChange("cardRoughness", v)}
         />
         <SliderRow
           label="Clearcoat"
-          value={cardClearcoat}
+          value={m.cardClearcoat}
           min={0}
           max={1}
           step={0.01}
-          onChange={(v) => setStudioState("cardClearcoat", v)}
+          onChange={(v) => onMaterialChange("cardClearcoat", v)}
         />
       </div>
     )
@@ -323,147 +321,147 @@ function MaterialSliders({
     <div className="space-y-2">
       <SliderRow
         label="Roughness"
-        value={cardRoughness}
+        value={m.cardRoughness}
         min={0}
         max={1}
         step={0.01}
-        onChange={(v) => setStudioState("cardRoughness", v)}
+        onChange={(v) => onMaterialChange("cardRoughness", v)}
       />
       <SliderRow
         label="Metalness"
-        value={cardMetalness}
+        value={m.cardMetalness}
         min={0}
         max={1}
         step={0.01}
-        onChange={(v) => setStudioState("cardMetalness", v)}
+        onChange={(v) => onMaterialChange("cardMetalness", v)}
       />
       <SliderRow
         label="Normal intensity"
-        value={cardNormalScale}
+        value={m.cardNormalScale}
         min={0}
         max={2}
         step={0.01}
-        onChange={(v) => setStudioState("cardNormalScale", v)}
+        onChange={(v) => onMaterialChange("cardNormalScale", v)}
       />
       <SliderRow
         label="Clearcoat"
-        value={cardClearcoat}
+        value={m.cardClearcoat}
         min={0}
         max={1}
         step={0.01}
-        onChange={(v) => setStudioState("cardClearcoat", v)}
+        onChange={(v) => onMaterialChange("cardClearcoat", v)}
       />
       <SliderRow
         label="Clearcoat roughness"
-        value={cardClearcoatRoughness}
+        value={m.cardClearcoatRoughness}
         min={0}
         max={1}
         step={0.01}
-        onChange={(v) => setStudioState("cardClearcoatRoughness", v)}
+        onChange={(v) => onMaterialChange("cardClearcoatRoughness", v)}
       />
       <SliderRow
         label="Edge tint"
-        value={cardEdgeTint}
+        value={m.cardEdgeTint}
         min={0}
         max={1}
         step={0.01}
-        onChange={(v) => setStudioState("cardEdgeTint", v)}
+        onChange={(v) => onMaterialChange("cardEdgeTint", v)}
       />
 
       {/* Glare */}
-      {glareMode !== "none" && (
+      {m.glareMode !== "none" && (
         <>
           <SliderRow
             label="Glare intensity"
-            value={glareIntensity}
+            value={m.glareIntensity}
             min={0}
             max={1}
             step={0.01}
-            onChange={(v) => setStudioState("glareIntensity", v)}
+            onChange={(v) => onMaterialChange("glareIntensity", v)}
           />
           <SliderRow
             label="Glare width"
-            value={glareWidth}
+            value={m.glareWidth}
             min={0.1}
             max={3}
             step={0.1}
-            onChange={(v) => setStudioState("glareWidth", v)}
+            onChange={(v) => onMaterialChange("glareWidth", v)}
           />
           <SliderRow
             label="Glare softness"
-            value={glareSoftness}
+            value={m.glareSoftness}
             min={0}
             max={1}
             step={0.01}
-            onChange={(v) => setStudioState("glareSoftness", v)}
+            onChange={(v) => onMaterialChange("glareSoftness", v)}
           />
         </>
       )}
 
       {/* Holographic */}
-      {holoEnabled && (
+      {m.holoEnabled && (
         <>
           <SliderRow
             label="Holo intensity"
-            value={holoIntensity}
+            value={m.holoIntensity}
             min={0}
             max={1}
             step={0.01}
-            onChange={(v) => setStudioState("holoIntensity", v)}
+            onChange={(v) => onMaterialChange("holoIntensity", v)}
           />
           <SliderRow
             label="Holo scale"
-            value={holoScale}
+            value={m.holoScale}
             min={0.5}
             max={5}
             step={0.1}
-            onChange={(v) => setStudioState("holoScale", v)}
+            onChange={(v) => onMaterialChange("holoScale", v)}
           />
           <SliderRow
             label="Holo hue shift"
-            value={holoHueShift}
+            value={m.holoHueShift}
             min={0}
             max={1}
             step={0.01}
-            onChange={(v) => setStudioState("holoHueShift", v)}
+            onChange={(v) => onMaterialChange("holoHueShift", v)}
           />
         </>
       )}
 
       {/* Foil */}
-      {foilEnabled && (
+      {m.foilEnabled && (
         <>
           <SliderRow
             label="Foil sheen"
-            value={foilSheen}
+            value={m.foilSheen}
             min={0}
             max={2}
             step={0.01}
-            onChange={(v) => setStudioState("foilSheen", v)}
+            onChange={(v) => onMaterialChange("foilSheen", v)}
           />
           <SliderRow
             label="Foil sparkle"
-            value={foilSparkle}
+            value={m.foilSparkle}
             min={0}
             max={1}
             step={0.01}
-            onChange={(v) => setStudioState("foilSparkle", v)}
+            onChange={(v) => onMaterialChange("foilSparkle", v)}
           />
           <SliderRow
             label="Foil density"
-            value={foilDensity}
+            value={m.foilDensity}
             min={0}
             max={1}
             step={0.01}
-            onChange={(v) => setStudioState("foilDensity", v)}
+            onChange={(v) => onMaterialChange("foilDensity", v)}
           />
           <SliderRow
             label="Foil sparkle size"
-            value={foilSparkleSize}
+            value={m.foilSparkleSize}
             min={0.5}
             max={3}
             step={0.1}
-            onChange={(v) => setStudioState("foilSparkleSize", v)}
+            onChange={(v) => onMaterialChange("foilSparkleSize", v)}
           />
         </>
       )}
