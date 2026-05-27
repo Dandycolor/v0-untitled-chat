@@ -946,17 +946,21 @@ export function PanelBody({ className, onCapture }: { className?: string; onCapt
  */
 export function PanelTabs({ onCapture }: { onCapture: () => void }) {
   return (
-    <Tabs defaultValue="design" className="flex min-h-0 flex-1 flex-col gap-0">
+    <Tabs defaultValue="settings" className="flex min-h-0 flex-1 flex-col gap-0">
       <TabsList className="mx-3 mt-3 grid h-9 grid-cols-2">
-        <TabsTrigger value="design" className="text-xs">
-          <Palette className="mr-1.5 size-3.5" />
-          Design
-        </TabsTrigger>
         <TabsTrigger value="settings" className="text-xs">
           <Layers className="mr-1.5 size-3.5" />
           Settings
         </TabsTrigger>
+        <TabsTrigger value="design" className="text-xs">
+          <Palette className="mr-1.5 size-3.5" />
+          Design
+        </TabsTrigger>
       </TabsList>
+
+      <TabsContent value="settings" className="mt-0 min-h-0 flex-1">
+        <PanelBody onCapture={onCapture} />
+      </TabsContent>
 
       <TabsContent
         value="design"
@@ -965,10 +969,6 @@ export function PanelTabs({ onCapture }: { onCapture: () => void }) {
         className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain p-4"
       >
         <PresetManager />
-      </TabsContent>
-
-      <TabsContent value="settings" className="mt-0 min-h-0 flex-1">
-        <PanelBody onCapture={onCapture} />
       </TabsContent>
     </Tabs>
   )
