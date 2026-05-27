@@ -200,10 +200,16 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
   const backMetal = useMaybeTexture(useBackPbr ? (back.metallic ?? back.orm) : undefined, THREE.NoColorSpace)
   const backAo = useMaybeTexture(useBackPbr ? (back.ao ?? back.orm) : undefined, THREE.NoColorSpace)
 
+  // Counter to force re-render when template loads asynchronously
+  const [templateVersion, setTemplateVersion] = useState(0)
+
   // Back composite (color + template) — used when not in PBR back mode.
   const backComposite = useMemo(() => {
     if (useBackPbr) return null
-    return makeBackCompositeTexture(backColor, backTemplate, flipH, flipV)
+    return makeBackCompositeTexture(backColor, backTemplate, flipH, flipV, () => {
+      // Force re-render when template finishes loading
+      setTemplateVersion((v) => v + 1)
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useBackPbr, backColor, backTemplate, flipH, flipV])
 
@@ -439,13 +445,14 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     u.tint.value = edgeTint
   }, [edgeColor, edgeTint])
 
-  // Albedo swap live update
+  // Albedo swap live update (also triggers when template loads via templateVersion)
   useEffect(() => {
     const u = albedoUniformsRef.current
     if (!u) return
     u.front.value = frontAlbedo.tex
     u.back.value = effectiveBackAlbedo
-  }, [frontAlbedo.tex, effectiveBackAlbedo])
+    console.log("[v0] albedo uniforms updated, templateVersion:", templateVersion)
+  }, [frontAlbedo.tex, effectiveBackAlbedo, templateVersion])
 
   // Live scalars
   material.roughness = roughness

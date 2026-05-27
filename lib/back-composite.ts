@@ -21,6 +21,7 @@ export function makeBackCompositeTexture(
   backTemplateUrl: string | undefined,
   flipH: boolean,
   flipV: boolean,
+  onTemplateLoaded?: () => void,
 ): { texture: THREE.CanvasTexture; dispose: () => void } {
   console.log("[v0] makeBackCompositeTexture:", { backColor, backTemplateUrl, flipH, flipV })
   const W = 1024
@@ -72,6 +73,7 @@ export function makeBackCompositeTexture(
             ctx.drawImage(img, 0, 0, W, H)
             tex.needsUpdate = true
             console.log("[v0] backComposite texture updated")
+            onTemplateLoaded?.()
             if (objectUrl) {
               const ou = objectUrl
               setTimeout(() => URL.revokeObjectURL(ou), 0)
