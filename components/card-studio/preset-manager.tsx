@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Check, Image as ImageIcon, Loader2, Plus, Save, Trash2, Upload, X } from "lucide-react"
+import { Check, Edit2, Image as ImageIcon, Loader2, Plus, Save, Trash2, Upload, X } from "lucide-react"
 import { useStudio, MATERIAL_KEYS, type DesignPreset, type PresetMaterial } from "@/lib/studio-store"
 import {
   loadPresets,
@@ -177,6 +177,7 @@ export function PresetManager() {
                   </span>
                 )}
               </button>
+              <EditPresetDialog preset={p} onUpdated={refresh} snapshotMaterial={snapshotMaterial} />
               <Button
                 size="icon"
                 variant="ghost"
@@ -446,6 +447,134 @@ function ChannelRow({
       )}
     </div>
   )
+}
+
+/**
+ * Dialog to edit preset name and optionally update its material settings.
+ */
+function EditPresetDialog({
+  preset,
+  onUpdated,
+  snapshotMaterial,
+}: {
+  preset: DesignPreset
+  onUpdated: () => void
+  snapshotMaterial: () => PresetMaterial
+}) {
+  const presets = useStudio((s) => s.presets)
+  const setPresets = useStudio((s) => s.setPresets)
+
+  const [open, setOpen] = useState(false)
+  const [editName, setEditName] = useState(preset.name)
+  const [includeMaterial, setIncludeMaterial] = useState(!!preset.material)
+  const [updating, setUpdating] = useState(false)
+
+  const handleSave = async () => {
+    if (!editName.trim()) {
+      toast.error("Enter a preset name")
+      return
+    }
+
+    setUpdating(true)
+    try {
+      // Save updated name and optionally new material
+      const updatedPreset: DesignPreset = {
+        ...preset,
+        name: editName.trim(),
+        material: includeMaterial ? snapshotMaterial() : preset.material,
+        createdAt: preset.createdAt,
+      }
+
+      await savePreset({
+        id: preset.id,
+        name: updatedPreset.name,
+        frontFiles: {},
+        backFiles: {},
+        material: updatedPreset.material,
+      })
+
+      // Update local state
+      setPresets(presets.map((p) => (p.id === preset.id ? updatedPreset : p)))
+
+      toast.success("Preset updated")
+      setOpen(false)
+    } catch (err) {
+      console.error("[v0] preset update error:", err)
+      toast.error("Failed to update preset")
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-7"
+          aria-label="Edit preset"
+        >
+          <Edit2 className="size-3.5" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit Design</DialogTitle>
+          <DialogDescription>
+            Update the preset name and material settings.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="preset-name" className="text-sm">
+              Preset name
+            </Label>
+            <Input
+              id="preset-name"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              placeholder="e.g., My custom design"
+              className="text-sm"
+            />
+          </div>
+
+          <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-muted/30 p-2.5 text-xs">
+            <input
+              type="checkbox"
+              checked={includeMaterial}
+              onChange={(e) => setIncludeMaterial(e.target.checked)}
+              className="mt-0.5 size-3.5 cursor-pointer accent-primary"
+            />
+            <span className="flex flex-col gap-0.5">
+              <span className="font-medium text-foreground">Update material settings</span>
+              <span className="text-muted-foreground">
+                Save the current card roughness, glare, holographic and foil settings to this design.
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={updating}>
+            {updating ? (
+              <>
+                <Loader2 className="mr-1.5 size-4 animate-spin" />
+                Saving…
+              </>
+            ) : (
+              "Save Changes"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
 }
 
 function formatSize(bytes: number) {
