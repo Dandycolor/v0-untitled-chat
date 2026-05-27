@@ -947,7 +947,7 @@ export function PanelBody({ className, onCapture }: { className?: string; onCapt
 export function PanelTabs({ onCapture }: { onCapture: () => void }) {
   return (
     <Tabs defaultValue="settings" className="flex min-h-0 flex-1 flex-col gap-0">
-      <TabsList className="mx-3 mt-3 grid h-9 grid-cols-2">
+      <TabsList className="mx-3 mt-3 grid h-9 shrink-0 grid-cols-2">
         <TabsTrigger value="settings" className="text-xs">
           <Layers className="mr-1.5 size-3.5" />
           Settings
@@ -958,15 +958,24 @@ export function PanelTabs({ onCapture }: { onCapture: () => void }) {
         </TabsTrigger>
       </TabsList>
 
-      <TabsContent value="settings" className="mt-0 min-h-0 flex-1">
+      {/*
+        forceMount keeps both panels in the DOM so:
+        - the saved-presets list isn't refetched every time we switch tabs
+        - the Settings scroll position survives a roundtrip to the Design tab
+        Visibility is toggled via data-state to hide the inactive panel.
+      */}
+      <TabsContent
+        forceMount
+        value="settings"
+        className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+      >
         <PanelBody onCapture={onCapture} />
       </TabsContent>
 
       <TabsContent
+        forceMount
         value="design"
-        // mt-0 cancels Radix's default vertical gap so the panel feels seamless;
-        // the inner div drives scroll independently of Settings tab state.
-        className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain p-4"
+        className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 data-[state=inactive]:hidden"
       >
         <PresetManager />
       </TabsContent>
