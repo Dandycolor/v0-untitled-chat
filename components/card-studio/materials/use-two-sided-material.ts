@@ -326,9 +326,11 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <map_fragment>",
         `#ifdef USE_MAP
-          // DEBUG: force back texture everywhere to verify uBackAlbedo content
+          float csBmap = cs_sideBlend();
+          vec4 sampledFront = texture2D(uFrontAlbedo, vMapUv);
           vec4 sampledBack = texture2D(uBackAlbedo, vMapUv);
-          diffuseColor *= sampledBack;
+          vec4 sampledDiffuseColor = mix(sampledBack, sampledFront, csBmap);
+          diffuseColor *= sampledDiffuseColor;
         #endif`,
       )
 
