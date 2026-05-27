@@ -48,6 +48,22 @@ function ensurePlanarUv(mesh: THREE.Mesh, sideAxis: 0 | 1 | 2, flipU = false) {
   geo.setAttribute("uv1", new THREE.BufferAttribute(u, 2))
 }
 
+// Force vertex normals along the given direction on a flat back-face mesh.
+// This makes cs_sideBlend() in the shader correctly detect the back side,
+// so the front-only normalMap is suppressed there.
+function forceFlatNormals(mesh: THREE.Mesh, sideAxis: 0 | 1 | 2, sign: 1 | -1) {
+  const geo = mesh.geometry
+  const pos = geo.attributes.position
+  if (!pos) return
+  const n = new Float32Array(pos.count * 3)
+  for (let i = 0; i < pos.count; i++) {
+    n[i * 3 + 0] = sideAxis === 0 ? sign : 0
+    n[i * 3 + 1] = sideAxis === 1 ? sign : 0
+    n[i * 3 + 2] = sideAxis === 2 ? sign : 0
+  }
+  geo.setAttribute("normal", new THREE.BufferAttribute(n, 3))
+}
+
 function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAxis: 0 | 1 | 2 } {
   const meshes: THREE.Mesh[] = []
   root.traverse((o) => {
@@ -84,6 +100,7 @@ function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAx
   const planeAxes = [0, 1, 2].filter((i) => i !== sideAxis) as [number, number]
   const bodyFootprint =
     body.size.getComponent(planeAxes[0]) * body.size.getComponent(planeAxes[1])
+  const bodyCenterAxis = (body.bbox.min.getComponent(sideAxis) + body.bbox.max.getComponent(sideAxis)) / 2
 
   for (const e of entries) {
     if (e === body) continue
@@ -96,16 +113,21 @@ function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAx
       // Small footprint relative to body → real chip (gold contact pad)
       e.role = "chip"
     } else if (footprintRatio >= 0.4 && withinFootprint) {
-      // Similar footprint to body → back-face plane (separate mesh covering the back)
-      // Treat as body so it gets the card material.
-      // flipU=true mirrors the U coordinate so the back texture reads correctly
-      // when viewed from behind (the back mesh's normal points opposite to body's).
+      // Similar footprint to body → flat plane covering one face of the card.
+      // Determine if it's front (+sideAxis) or back (-sideAxis) by its center
+      // position along sideAxis relative to the body center.
+      const eCenterAxis = (e.bbox.min.getComponent(sideAxis) + e.bbox.max.getComponent(sideAxis)) / 2
+      const isBack = eCenterAxis < bodyCenterAxis
       e.role = "body"
-      ensurePlanarUv(e.mesh, sideAxis, true)
+      ensurePlanarUv(e.mesh, sideAxis, isBack)
+      // Force flat normals so the shader's cs_sideBlend() correctly detects which side.
+      forceFlatNormals(e.mesh, sideAxis, isBack ? -1 : 1)
     }
   }
 
   ensurePlanarUv(body.mesh, sideAxis)
+  // Body is the bulk of the card; treat its visible face as the front side.
+  forceFlatNormals(body.mesh, sideAxis, 1)
 
   return { analyzed: entries, sideAxis }
 }
