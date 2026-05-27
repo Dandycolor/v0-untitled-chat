@@ -53,10 +53,9 @@ export async function GET(req: NextRequest) {
   try {
     upstream = await fetch(target.toString(), {
       headers: range ? { range } : undefined,
-      // Edge runtime `cache: "force-cache"` lets the platform dedupe identical
-      // upstream requests across users at the edge. Blob URLs are immutable
-      // (the hash is in the pathname), so this is safe.
-      cache: "force-cache",
+      // Don't use force-cache here - it can cache error responses.
+      // Response caching is handled via cache-control headers below.
+      cache: "no-store",
     })
   } catch (err) {
     console.log("[v0] texture proxy upstream fetch failed:", target.toString(), err)
@@ -64,15 +63,20 @@ export async function GET(req: NextRequest) {
   }
 
   if (!upstream.ok && upstream.status !== 206) {
+    console.log("[v0] texture proxy upstream returned:", upstream.status, "for", target.toString())
     return new Response(`upstream ${upstream.status}`, { status: upstream.status })
   }
 
-  // Copy only the content-type / content-length and rewrite cache headers to
-  // something the browser + Vercel edge will aggressively cache. The Blob URL
-  // itself contains a random hash, so we can treat responses as immutable.
+  // Verify we got an image, not an error page
+  const ct = upstream.headers.get("content-type") || ""
+  if (!ct.startsWith("image/")) {
+    console.log("[v0] texture proxy got non-image content-type:", ct, "for", target.toString())
+    return new Response("upstream returned non-image", { status: 502 })
+  }
+
+  // Copy content headers. ct already validated above.
   const headers = new Headers()
-  const ct = upstream.headers.get("content-type")
-  if (ct) headers.set("content-type", ct)
+  headers.set("content-type", ct)
   const cl = upstream.headers.get("content-length")
   if (cl) headers.set("content-length", cl)
   const cr = upstream.headers.get("content-range")
