@@ -308,6 +308,14 @@ export const useStudio = create<StudioState>((set) => ({
   setBackPbr: (patch) => set((s) => ({ backPbr: { ...s.backPbr, ...patch } })),
   applyPreset: (preset) =>
     set((s) => {
+      console.log("[v0] applyPreset", {
+        id: preset.id,
+        name: preset.name,
+        type: preset.type,
+        front: preset.front,
+        backColor: preset.backColor,
+        backTemplate: preset.backTemplate,
+      })
       const next: Partial<StudioState> = {
         activePresetId: preset.id,
         activePresetType: preset.type,

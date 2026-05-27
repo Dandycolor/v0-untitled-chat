@@ -80,6 +80,7 @@ function useMaybeTexture(
       setTex(fallback)
       return
     }
+    console.log("[v0] useMaybeTexture loading:", resolved)
     let cancelled = false
     const ac = new AbortController()
     useTextureLoading.getState().start()
@@ -110,11 +111,13 @@ function useMaybeTexture(
           t.anisotropy = 8
           t.needsUpdate = true
           setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
+          console.log("[v0] useMaybeTexture loaded:", resolved, "size", img.width, "x", img.height)
           setTex(t)
           settle()
         }
-        img.onerror = () => {
+        img.onerror = (e) => {
           URL.revokeObjectURL(objectUrl)
+          console.log("[v0] useMaybeTexture image decode error:", resolved, e)
           if (!cancelled) setTex(fallback)
           settle()
         }
@@ -124,6 +127,7 @@ function useMaybeTexture(
           settle()
           return
         }
+        console.log("[v0] useMaybeTexture fetch error:", resolved, err)
         if (!cancelled) setTex(fallback)
         settle()
       }
@@ -169,6 +173,14 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
   } = params
 
   const isSimple = presetType === "simple"
+
+  console.log("[v0] useTwoSidedPhysicalMaterial render", {
+    presetType,
+    frontKeys: Object.keys(front),
+    frontAlbedo: front.albedo,
+    backColor,
+    backTemplate,
+  })
 
   // Front textures
   const frontAlbedo = useMaybeTexture(front.albedo, THREE.SRGBColorSpace)
