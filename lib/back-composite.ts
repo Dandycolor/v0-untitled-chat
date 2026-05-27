@@ -1,20 +1,11 @@
 "use client"
 
 import * as THREE from "three"
-import { resolveTextureUrl } from "@/lib/texture-url"
-import { fetchTextureBlob } from "@/lib/fetch-texture-blob"
 
 /**
- * Builds a CanvasTexture for the back side by:
- *  1. Filling with `backColor`
- *  2. Drawing the optional `backTemplate` PNG on top (uses its alpha)
- *
- * Returns a CanvasTexture that can be plugged into a material's albedo slot
- * for the back face. If neither color nor template is needed it still returns
- * a solid color texture so the back side never appears unshaded.
- *
- * Loads the template URL asynchronously; while loading the texture is just
- * the solid color, then updates once the image arrives.
+ * Creates a canvas texture with backColor as background and optional
+ * backTemplate PNG overlaid on top. The template is loaded asynchronously
+ * using a simple Image element (no fetch/blob complexity).
  */
 export function makeBackCompositeTexture(
   backColor: string,
@@ -24,19 +15,21 @@ export function makeBackCompositeTexture(
   onTemplateLoaded?: () => void,
 ): { texture: THREE.CanvasTexture; dispose: () => void } {
   console.log("[v0] makeBackCompositeTexture:", { backColor, backTemplateUrl, flipH, flipV })
+  
   const W = 1024
-  const H = 640
+  const H = 640 // Card aspect ratio ~1.6
   const canvas = document.createElement("canvas")
   canvas.width = W
   canvas.height = H
   const ctx = canvas.getContext("2d")!
 
-  // Step 1: paint background color
+  // Fill background with solid color
   ctx.fillStyle = backColor
   ctx.fillRect(0, 0, W, H)
 
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
+  tex.flipY = true
   tex.wrapS = THREE.ClampToEdgeWrapping
   tex.wrapT = THREE.ClampToEdgeWrapping
   tex.anisotropy = 8
@@ -46,68 +39,32 @@ export function makeBackCompositeTexture(
   tex.needsUpdate = true
 
   let cancelled = false
-  let objectUrl: string | null = null
 
+  // Load template overlay if provided - use simple Image, not fetch
   if (backTemplateUrl) {
-    const resolved = resolveTextureUrl(backTemplateUrl)
-    console.log("[v0] backComposite resolved template URL:", resolved)
-    if (resolved) {
-      const ac = new AbortController()
-      ;(async () => {
-        try {
-          console.log("[v0] backComposite fetching template...")
-          const blob = await fetchTextureBlob(resolved, ac.signal)
-          console.log("[v0] backComposite got blob:", blob.type, blob.size)
-          if (cancelled) return
-          objectUrl = URL.createObjectURL(blob)
-          const img = new Image()
-          img.decoding = "async"
-          img.onload = () => {
-            console.log("[v0] backComposite template loaded:", img.width, "x", img.height)
-            if (cancelled) {
-              if (objectUrl) URL.revokeObjectURL(objectUrl)
-              return
-            }
-            // Draw template scaled to canvas, preserving its aspect by stretching
-            // (template is designed for the same card aspect as our 1024x640).
-            ctx.drawImage(img, 0, 0, W, H)
-            tex.needsUpdate = true
-            console.log("[v0] backComposite texture updated")
-            onTemplateLoaded?.()
-            if (objectUrl) {
-              const ou = objectUrl
-              setTimeout(() => URL.revokeObjectURL(ou), 0)
-              objectUrl = null
-            }
-          }
-          img.onerror = (e) => {
-            console.log("[v0] backComposite template img.onerror:", e)
-            if (objectUrl) URL.revokeObjectURL(objectUrl)
-          }
-          img.src = objectUrl
-        } catch (err) {
-          console.log("[v0] backComposite fetch error:", err)
-          /* keep solid color background */
-        }
-      })()
-
-      return {
-        texture: tex,
-        dispose: () => {
-          cancelled = true
-          ac.abort()
-          if (objectUrl) URL.revokeObjectURL(objectUrl)
-          tex.dispose()
-        },
-      }
+    console.log("[v0] backComposite loading template via Image:", backTemplateUrl)
+    const img = new Image()
+    img.crossOrigin = "anonymous"
+    img.onload = () => {
+      if (cancelled) return
+      console.log("[v0] backComposite template loaded:", img.width, "x", img.height)
+      // Draw template scaled to canvas
+      ctx.drawImage(img, 0, 0, W, H)
+      tex.needsUpdate = true
+      console.log("[v0] backComposite texture updated with template")
+      onTemplateLoaded?.()
     }
+    img.onerror = (e) => {
+      console.log("[v0] backComposite template Image.onerror:", backTemplateUrl, e)
+    }
+    // Start loading
+    img.src = backTemplateUrl
   }
 
   return {
     texture: tex,
     dispose: () => {
       cancelled = true
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
       tex.dispose()
     },
   }
