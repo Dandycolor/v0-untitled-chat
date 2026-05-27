@@ -205,6 +205,7 @@ export function CardModel() {
     clearcoat: cardClearcoat,
     clearcoatRoughness: cardClearcoatRoughness,
     sideAxis,
+    cardCenter: bodyCenter.getComponent(sideAxis),
     flipH: textureFlipH,
     flipV: textureFlipV,
     edgeColor: cardEdgeColor,

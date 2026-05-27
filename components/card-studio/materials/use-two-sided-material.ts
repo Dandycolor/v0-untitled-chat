@@ -24,6 +24,8 @@ type Params = {
   clearcoatRoughness: number
   /** 0=X, 1=Y, 2=Z — object-local axis from back to front face. */
   sideAxis: 0 | 1 | 2
+  /** Center position of the card along sideAxis, used to determine front/back. */
+  cardCenter: number
   flipH: boolean
   flipV: boolean
   edgeColor: string
@@ -167,6 +169,7 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     clearcoat,
     clearcoatRoughness,
     sideAxis,
+    cardCenter,
     flipH,
     flipV,
     edgeColor,
@@ -265,6 +268,7 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
       shader.uniforms.uSideAxis = { value: sideAxis }
       shader.uniforms.uIsSimple = { value: isSimple ? 1 : 0 }
       shader.uniforms.uUseBackPbr = { value: useBackPbr ? 1 : 0 }
+      shader.uniforms.uCardCenter = { value: cardCenter }
 
       // Optional PBR maps for back side
       shader.uniforms.uBackNormal = { value: backNormal.tex }
@@ -281,16 +285,18 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
       shader.uniforms.uEdgeTint = edgeTintUniform
       edgeUniformsRef.current = { color: edgeColorUniform, tint: edgeTintUniform }
 
-      // --- Vertex: export object-local normal
+      // --- Vertex: export object-local normal and position
       shader.vertexShader = shader.vertexShader.replace(
         "#include <common>",
         `#include <common>
-        varying vec3 vObjectNormal;`,
+        varying vec3 vObjectNormal;
+        varying vec3 vObjectPosition;`,
       )
       shader.vertexShader = shader.vertexShader.replace(
         "#include <beginnormal_vertex>",
         `#include <beginnormal_vertex>
-        vObjectNormal = objectNormal;`,
+        vObjectNormal = objectNormal;
+        vObjectPosition = position;`,
       )
 
       // --- Fragment shared code
@@ -298,6 +304,7 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         "#include <common>",
         `#include <common>
         varying vec3 vObjectNormal;
+        varying vec3 vObjectPosition;
         uniform sampler2D uFrontAlbedo;
         uniform sampler2D uBackAlbedo;
         uniform sampler2D uFrontRough;
@@ -311,11 +318,13 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         uniform int uUseBackPbr;
         uniform vec3 uEdgeColor;
         uniform float uEdgeTint;
+        uniform float uCardCenter;
         float cs_sideBlend() {
-          // Determine front vs back based on object-space normal direction along sideAxis.
-          // Front faces have positive component, back faces have negative.
-          float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
-          return smoothstep(-0.1, 0.1, c);
+          // Determine front vs back based on object-space position along sideAxis.
+          // Vertices on the positive side of center are front, negative are back.
+          // This works correctly regardless of vertex normals.
+          float pos = (uSideAxis == 0) ? vObjectPosition.x : ((uSideAxis == 1) ? vObjectPosition.y : vObjectPosition.z);
+          return smoothstep(uCardCenter - 0.001, uCardCenter + 0.001, pos);
         }
         float cs_edgeMask() {
           // Edge detection: side faces have normal perpendicular to sideAxis (c near 0)
@@ -416,6 +425,7 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     backAo.tex,
     frontClearMask.tex,
     sideAxis,
+    cardCenter,
     isSimple,
     useBackPbr,
   ])
