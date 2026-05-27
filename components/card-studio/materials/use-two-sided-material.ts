@@ -312,15 +312,13 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         uniform vec3 uEdgeColor;
         uniform float uEdgeTint;
         float cs_sideBlend() {
-          // Use object-space normal to determine front/back side
-          // Front side has positive normal along sideAxis, back has negative
-          float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
-          // Smooth transition to avoid edge artifacts
-          return smoothstep(-0.1, 0.1, c);
+          // For plane geometry with DoubleSide: gl_FrontFacing distinguishes which side we see
+          // Front face = show front texture (1.0), Back face = show back texture (0.0)
+          return gl_FrontFacing ? 1.0 : 0.0;
         }
         float cs_edgeMask() {
-          float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
-          return 1.0 - smoothstep(0.05, 0.35, abs(c));
+          // For plane geometry, there are no real edges - return 0 to disable edge effect
+          return 0.0;
         }`,
       )
 
