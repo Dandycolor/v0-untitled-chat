@@ -28,7 +28,7 @@ export async function POST(request: Request): Promise<NextResponse> {
             "image/webp",
             "image/tiff",
           ],
-          maximumSizeInBytes: 10 * 1024 * 1024, // 10 MB max
+          maximumSizeInBytes: 50 * 1024 * 1024, // 50 MB max — PBR textures can be large
           addRandomSuffix: options.addRandomSuffix ?? true, // Enable random suffix by default
         }
       },

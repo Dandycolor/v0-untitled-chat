@@ -6,7 +6,6 @@ import {
   ChevronDown,
   Image as ImageIcon,
   Loader2,
-  Palette,
   Plus,
   Save,
   Trash2,
@@ -20,7 +19,6 @@ import {
   deletePreset,
   updatePresetMaterial,
 } from "@/lib/preset-storage"
-import { upload } from "@vercel/blob/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -289,7 +287,6 @@ function PresetEditor({
 
   // Replacement files (optional)
   const [pbrFront, setPbrFront] = useState<PbrFiles>({})
-  const [pbrBack, setPbrBack] = useState<PbrFiles>({})
   const [simpleAlbedo, setSimpleAlbedo] = useState<File | null>(null)
   const [simpleClearMask, setSimpleClearMask] = useState<File | null>(null)
 
@@ -324,7 +321,7 @@ function PresetEditor({
             ? { clearcoatMask: simpleClearMask }
             : {}
         : (pbrFront as Record<string, File>)
-      const backFiles: Record<string, File> = isSimple ? {} : (pbrBack as Record<string, File>)
+      const backFiles: Record<string, File> = {}
 
       await savePreset({
         id: preset.id,
@@ -343,7 +340,6 @@ function PresetEditor({
       toast.success("Material updated")
       onRefresh()
       setPbrFront({})
-      setPbrBack({})
       setSimpleAlbedo(null)
       setSimpleClearMask(null)
       // Re-apply if active, so new textures show
@@ -389,10 +385,7 @@ function PresetEditor({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-2">
-          <PbrSidePanel label="Front" files={pbrFront} onChange={setPbrFront} />
-          <PbrSidePanel label="Back" files={pbrBack} onChange={setPbrBack} />
-        </div>
+        <PbrSidePanel label="Front" files={pbrFront} onChange={setPbrFront} />
       )}
 
       {/* Back settings — color + template toggle */}
@@ -542,7 +535,6 @@ function CreateMaterialDialog({
 
   // PBR state
   const [pbrFront, setPbrFront] = useState<PbrFiles>({})
-  const [pbrBack, setPbrBack] = useState<PbrFiles>({})
 
   // Back settings
   const [backColor, setBackColor] = useState("#000000")
@@ -553,7 +545,6 @@ function CreateMaterialDialog({
     setSimpleAlbedo(null)
     setSimpleClearMask(null)
     setPbrFront({})
-    setPbrBack({})
     setBackColor("#000000")
     setUseTemplate(false)
     setIncludeMaterial(true)
@@ -561,7 +552,7 @@ function CreateMaterialDialog({
 
   const isPbr = kind === "pbr"
   const totalCount = isPbr
-    ? Object.keys(pbrFront).length + Object.keys(pbrBack).length
+    ? Object.keys(pbrFront).length
     : (simpleAlbedo ? 1 : 0) + (simpleClearMask ? 1 : 0)
 
   const handleCreate = async () => {
@@ -581,11 +572,10 @@ function CreateMaterialDialog({
     setSaving(true)
     try {
       let frontFiles: Record<string, File> = {}
-      let backFiles: Record<string, File> = {}
+      const backFiles: Record<string, File> = {}
 
       if (isPbr) {
         frontFiles = pbrFront as Record<string, File>
-        backFiles = pbrBack as Record<string, File>
       } else {
         if (simpleAlbedo) frontFiles.albedo = simpleAlbedo
         if (simpleClearMask) frontFiles.clearcoatMask = simpleClearMask
@@ -660,10 +650,7 @@ function CreateMaterialDialog({
 
           {/* Front textures */}
           {isPbr ? (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <PbrSidePanel label="Front" files={pbrFront} onChange={setPbrFront} />
-              <PbrSidePanel label="Back" files={pbrBack} onChange={setPbrBack} />
-            </div>
+            <PbrSidePanel label="Front" files={pbrFront} onChange={setPbrFront} />
           ) : (
             <div className="space-y-2 rounded-md border bg-muted/30 p-3">
               <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
