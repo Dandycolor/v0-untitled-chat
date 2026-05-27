@@ -43,7 +43,7 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
     })
 
     // Unique cache key so Three never reuses a stale compiled program.
-    mat.customProgramCacheKey = () => "chip-material-noise-v1"
+    mat.customProgramCacheKey = () => "chip-material-noise-v2-worldspace"
 
     mat.onBeforeCompile = (shader) => {
       // Share the same uniform objects across frames so updating .value hot-swaps live.
@@ -58,9 +58,8 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
       shader.vertexShader = shader.vertexShader.replace(
         "#include <uv_vertex>",
         `#include <uv_vertex>
-         // Use object-space XZ (card plane) for uniform noise pattern.
-         // Scale by large factor so noise frequency is appropriate.
-         vChipUv = position.xz * 50.0;`,
+         // Use object-space XY (card plane) for uniform noise pattern across all chip elements.
+         vChipUv = position.xy * 50.0;`,
       )
 
       shader.fragmentShader = shader.fragmentShader.replace(
