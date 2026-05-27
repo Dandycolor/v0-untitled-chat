@@ -49,16 +49,20 @@ export function makeBackCompositeTexture(
 
   if (backTemplateUrl) {
     const resolved = resolveTextureUrl(backTemplateUrl)
+    console.log("[v0] backComposite resolved template URL:", resolved)
     if (resolved) {
       const ac = new AbortController()
       ;(async () => {
         try {
+          console.log("[v0] backComposite fetching template...")
           const blob = await fetchTextureBlob(resolved, ac.signal)
+          console.log("[v0] backComposite got blob:", blob.type, blob.size)
           if (cancelled) return
           objectUrl = URL.createObjectURL(blob)
           const img = new Image()
           img.decoding = "async"
           img.onload = () => {
+            console.log("[v0] backComposite template loaded:", img.width, "x", img.height)
             if (cancelled) {
               if (objectUrl) URL.revokeObjectURL(objectUrl)
               return
@@ -67,17 +71,20 @@ export function makeBackCompositeTexture(
             // (template is designed for the same card aspect as our 1024x640).
             ctx.drawImage(img, 0, 0, W, H)
             tex.needsUpdate = true
+            console.log("[v0] backComposite texture updated")
             if (objectUrl) {
               const ou = objectUrl
               setTimeout(() => URL.revokeObjectURL(ou), 0)
               objectUrl = null
             }
           }
-          img.onerror = () => {
+          img.onerror = (e) => {
+            console.log("[v0] backComposite template img.onerror:", e)
             if (objectUrl) URL.revokeObjectURL(objectUrl)
           }
           img.src = objectUrl
-        } catch {
+        } catch (err) {
+          console.log("[v0] backComposite fetch error:", err)
           /* keep solid color background */
         }
       })()
