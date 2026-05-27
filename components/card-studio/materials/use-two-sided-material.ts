@@ -310,8 +310,9 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         uniform vec3 uEdgeColor;
         uniform float uEdgeTint;
         float cs_sideBlend() {
-          float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
-          return smoothstep(-0.2, 0.2, c);
+          // Use gl_FrontFacing to detect if we're looking at front or back of the face
+          // gl_FrontFacing = true when looking at front face, false for back face
+          return gl_FrontFacing ? 1.0 : 0.0;
         }
         float cs_edgeMask() {
           float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
