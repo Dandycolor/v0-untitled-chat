@@ -312,13 +312,15 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         uniform vec3 uEdgeColor;
         uniform float uEdgeTint;
         float cs_sideBlend() {
-          // For plane geometry with DoubleSide: gl_FrontFacing distinguishes which side we see
-          // Front face = show front texture (1.0), Back face = show back texture (0.0)
-          return gl_FrontFacing ? 1.0 : 0.0;
+          // Body mesh has normals along +sideAxis (front face).
+          // Separate back-face mesh has normals along -sideAxis.
+          // Returns 1.0 for front (use front textures), 0.0 for back (use back textures).
+          float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
+          return smoothstep(-0.1, 0.1, c);
         }
         float cs_edgeMask() {
-          // For plane geometry, there are no real edges - return 0 to disable edge effect
-          return 0.0;
+          float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
+          return 1.0 - smoothstep(0.05, 0.35, abs(c));
         }`,
       )
 
@@ -326,10 +328,13 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <map_fragment>",
         `#ifdef USE_MAP
-          // VISUAL DEBUG: red = front (gl_FrontFacing=true), green = back (false)
-          // If you see GRAY anywhere, that mesh is NOT using this shader at all.
-          vec3 debugColor = gl_FrontFacing ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
-          diffuseColor.rgb = debugColor;
+          float csBmap = cs_sideBlend();
+          vec4 sampledFront = texture2D(uFrontAlbedo, vMapUv);
+          vec4 sampledBack = texture2D(uBackAlbedo, vMapUv);
+          vec4 sampledDiffuseColor = mix(sampledBack, sampledFront, csBmap);
+          diffuseColor *= sampledDiffuseColor;
+          float edgeMask = cs_edgeMask() * uEdgeTint;
+          diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeColor, edgeMask);
         #endif`,
       )
 

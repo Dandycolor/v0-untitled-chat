@@ -80,11 +80,27 @@ function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAx
   else if (s.y <= s.x && s.y <= s.z) sideAxis = 1
   else sideAxis = 2
 
+  // Compute footprint area (in the plane perpendicular to sideAxis)
+  const planeAxes = [0, 1, 2].filter((i) => i !== sideAxis) as [number, number]
+  const bodyFootprint =
+    body.size.getComponent(planeAxes[0]) * body.size.getComponent(planeAxes[1])
+
   for (const e of entries) {
     if (e === body) continue
-    const smallerVolume = e.volume < body.volume * 0.2
+    const eFootprint =
+      e.size.getComponent(planeAxes[0]) * e.size.getComponent(planeAxes[1])
+    const footprintRatio = eFootprint / Math.max(bodyFootprint, 1e-8)
     const withinFootprint = body.bbox.containsBox(e.bbox) || body.bbox.intersectsBox(e.bbox)
-    if (smallerVolume && withinFootprint) e.role = "chip"
+
+    if (footprintRatio < 0.4 && withinFootprint) {
+      // Small footprint relative to body → real chip (gold contact pad)
+      e.role = "chip"
+    } else if (footprintRatio >= 0.4 && withinFootprint) {
+      // Similar footprint to body → back-face plane (separate mesh covering the back)
+      // Treat as body so it gets the card material
+      e.role = "body"
+      ensurePlanarUv(e.mesh, sideAxis)
+    }
   }
 
   ensurePlanarUv(body.mesh, sideAxis)
