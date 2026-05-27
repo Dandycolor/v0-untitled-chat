@@ -12,11 +12,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     const jsonResponse = await handleUpload({
       body,
       request,
-      onBeforeGenerateToken: async (pathname) => {
+      onBeforeGenerateToken: async (pathname, clientPayload) => {
         // Validate the pathname is for presets
         if (!pathname.startsWith("presets/")) {
           throw new Error("Invalid upload path")
         }
+
+        // Parse client options
+        const options = clientPayload ? JSON.parse(clientPayload) : {}
 
         return {
           allowedContentTypes: [
@@ -26,12 +29,10 @@ export async function POST(request: Request): Promise<NextResponse> {
             "image/tiff",
           ],
           maximumSizeInBytes: 10 * 1024 * 1024, // 10 MB max
+          addRandomSuffix: options.addRandomSuffix ?? true, // Enable random suffix by default
         }
       },
-      onUploadCompleted: async ({ blob }) => {
-        // Optional: log upload or update database
-        console.log("[v0] Blob upload completed:", blob.pathname)
-      },
+      // Note: onUploadCompleted requires VERCEL_BLOB_CALLBACK_URL env var, omitting for now
     })
 
     return NextResponse.json(jsonResponse)

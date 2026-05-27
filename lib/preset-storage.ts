@@ -168,6 +168,7 @@ async function uploadTexture(
   const blob = await upload(pathname, file, {
     access: "public",
     handleUploadUrl: "/api/blob/upload",
+    clientPayload: JSON.stringify({ addRandomSuffix: true }),
   })
 
   return blob.url
