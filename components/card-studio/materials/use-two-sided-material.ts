@@ -310,9 +310,9 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         uniform vec3 uEdgeColor;
         uniform float uEdgeTint;
         float cs_sideBlend() {
-          // Use gl_FrontFacing to detect if we're looking at front or back of the face
-          // For this geometry, gl_FrontFacing seems inverted, so we flip it
-          return gl_FrontFacing ? 0.0 : 1.0;
+          // gl_FrontFacing = true when camera sees the front-facing polygon
+          // Return 1.0 for front (use front texture), 0.0 for back (use back texture)
+          return gl_FrontFacing ? 1.0 : 0.0;
         }
         float cs_edgeMask() {
           float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
