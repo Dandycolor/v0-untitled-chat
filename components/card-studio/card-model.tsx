@@ -61,7 +61,10 @@ function forceFlatNormals(mesh: THREE.Mesh, sideAxis: 0 | 1 | 2, sign: 1 | -1) {
     n[i * 3 + 1] = sideAxis === 1 ? sign : 0
     n[i * 3 + 2] = sideAxis === 2 ? sign : 0
   }
-  geo.setAttribute("normal", new THREE.BufferAttribute(n, 3))
+  const normalAttr = new THREE.BufferAttribute(n, 3)
+  geo.setAttribute("normal", normalAttr)
+  normalAttr.needsUpdate = true
+  geo.computeTangents()
 }
 
 function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAxis: 0 | 1 | 2 } {

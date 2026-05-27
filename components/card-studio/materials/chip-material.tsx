@@ -43,7 +43,7 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
     })
 
     // Unique cache key so Three never reuses a stale compiled program.
-    mat.customProgramCacheKey = () => "chip-material-noise-v3-no-aniso"
+    mat.customProgramCacheKey = () => "chip-material-noise-v4-worldspace"
 
     mat.onBeforeCompile = (shader) => {
       // Share the same uniform objects across frames so updating .value hot-swaps live.
@@ -53,18 +53,18 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
       shader.vertexShader = shader.vertexShader.replace(
         "#include <common>",
         `#include <common>
-         varying vec2 vChipUv;`,
+         varying vec3 vWorldPos;`,
       )
       shader.vertexShader = shader.vertexShader.replace(
-        "#include <uv_vertex>",
-        `#include <uv_vertex>
-         vChipUv = uv;`,
+        "#include <worldpos_vertex>",
+        `#include <worldpos_vertex>
+         vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;`,
       )
 
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <common>",
         `#include <common>
-         varying vec2 vChipUv;
+         varying vec3 vWorldPos;
          uniform float uNoiseAmount;
          uniform float uNoiseScale;
 
@@ -101,10 +101,12 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
       )
 
       // Modulate roughness around the base value using centered noise.
+      // Use world-space XY for uniform pattern across all chip elements.
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <roughnessmap_fragment>",
         `float roughnessFactor = roughness;
-         float chipN = chipNoise(vChipUv * uNoiseScale);
+         vec2 chipUV = vWorldPos.xy * 100.0; // Scale world coords for appropriate noise frequency
+         float chipN = chipNoise(chipUV * uNoiseScale);
          roughnessFactor = clamp(roughnessFactor + (chipN - 0.5) * uNoiseAmount, 0.02, 1.0);`,
       )
 
@@ -114,8 +116,9 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
         "#include <normal_fragment_maps>",
         `#include <normal_fragment_maps>
          {
+           vec2 chipUV = vWorldPos.xy * 100.0;
            float eps = 1.0 / max(uNoiseScale, 1.0);
-           vec2 nuv = vChipUv * uNoiseScale;
+           vec2 nuv = chipUV * uNoiseScale;
            float nx1 = chipNoise(nuv + vec2(eps, 0.0));
            float nx0 = chipNoise(nuv - vec2(eps, 0.0));
            float ny1 = chipNoise(nuv + vec2(0.0, eps));
