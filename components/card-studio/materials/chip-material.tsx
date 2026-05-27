@@ -35,15 +35,15 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
       color: new THREE.Color(color),
       metalness,
       roughness,
-      anisotropy,
-      anisotropyRotation: 0, // 0 = horizontal brushed texture
+      anisotropy: 0, // Disable anisotropy to ensure uniform highlights across all chip elements
+      anisotropyRotation: 0,
       envMapIntensity: 1.4,
       clearcoat: 0.2,
       clearcoatRoughness: 0.3,
     })
 
     // Unique cache key so Three never reuses a stale compiled program.
-    mat.customProgramCacheKey = () => "chip-material-noise-v2-worldspace"
+    mat.customProgramCacheKey = () => "chip-material-noise-v3-no-aniso"
 
     mat.onBeforeCompile = (shader) => {
       // Share the same uniform objects across frames so updating .value hot-swaps live.
@@ -58,8 +58,7 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
       shader.vertexShader = shader.vertexShader.replace(
         "#include <uv_vertex>",
         `#include <uv_vertex>
-         // Use object-space XY (card plane) for uniform noise pattern across all chip elements.
-         vChipUv = position.xy * 50.0;`,
+         vChipUv = uv;`,
       )
 
       shader.fragmentShader = shader.fragmentShader.replace(
