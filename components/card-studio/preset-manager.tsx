@@ -1,9 +1,9 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Check, Image as ImageIcon, Loader2, Plus, Trash2, Upload, X } from "lucide-react"
+import { Check, Image as ImageIcon, Loader2, Plus, Save, Trash2, Upload, X } from "lucide-react"
 import { upload } from "@vercel/blob/client"
-import { useStudio, type DesignPreset } from "@/lib/studio-store"
+import { useStudio, MATERIAL_KEYS, type DesignPreset, type PresetMaterial } from "@/lib/studio-store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -39,6 +39,7 @@ export function PresetManager() {
   const activePresetId = useStudio((s) => s.activePresetId)
 
   const [loading, setLoading] = useState(false)
+  const [savingMaterial, setSavingMaterial] = useState(false)
 
   const refresh = async () => {
     setLoading(true)
@@ -69,11 +70,67 @@ export function PresetManager() {
     toast.success("Preset deleted")
   }
 
+  // Snapshots the current material-state slice into a `PresetMaterial`. Reading
+  // the store imperatively avoids subscribing the whole component to every
+  // material-related slider change.
+  const snapshotMaterial = (): PresetMaterial => {
+    const s = useStudio.getState()
+    const out = {} as PresetMaterial
+    for (const k of MATERIAL_KEYS) {
+      ;(out as Record<string, unknown>)[k] = s[k]
+    }
+    return out
+  }
+
+  // PATCH the active preset with the current material values, then reflect it
+  // locally so the next click on the design re-applies these settings.
+  const onSaveMaterialToActive = async () => {
+    if (!activePresetId) return
+    setSavingMaterial(true)
+    try {
+      const material = snapshotMaterial()
+      const r = await fetch("/api/presets", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: activePresetId, material }),
+      })
+      if (!r.ok) throw new Error(`status ${r.status}`)
+      setPresets(
+        presets.map((p) => (p.id === activePresetId ? { ...p, material } : p)),
+      )
+      toast.success("Material saved to design")
+    } catch (err) {
+      console.error("[v0] save material error:", err)
+      toast.error("Failed to save material")
+    } finally {
+      setSavingMaterial(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <Label className="text-xs uppercase tracking-wide text-muted-foreground">Saved designs</Label>
-        <UploadPresetDialog onUploaded={refresh} />
+        <div className="flex items-center gap-1.5">
+          {activePresetId && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1 bg-transparent"
+              onClick={onSaveMaterialToActive}
+              disabled={savingMaterial}
+              title="Save current material settings to active design"
+            >
+              {savingMaterial ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Save className="size-3.5" />
+              )}
+              Save material
+            </Button>
+          )}
+          <UploadPresetDialog onUploaded={refresh} snapshotMaterial={snapshotMaterial} />
+        </div>
       </div>
 
       {loading && (
@@ -97,6 +154,7 @@ export function PresetManager() {
       <div className="flex flex-col gap-1.5">
         {presets.map((p) => {
           const active = activePresetId === p.id
+          const hasMaterial = !!p.material
           return (
             <div
               key={p.id}
@@ -112,7 +170,15 @@ export function PresetManager() {
                 >
                   {active && <Check className="size-3" />}
                 </span>
-                <span className="truncate text-sm">{p.name}</span>
+                <span className="min-w-0 flex-1 truncate text-sm">{p.name}</span>
+                {hasMaterial && (
+                  <span
+                    className="shrink-0 rounded-full bg-secondary px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-secondary-foreground"
+                    title="Includes material settings"
+                  >
+                    M
+                  </span>
+                )}
               </button>
               <Button
                 size="icon"
@@ -131,9 +197,16 @@ export function PresetManager() {
   )
 }
 
-function UploadPresetDialog({ onUploaded }: { onUploaded: () => void }) {
+function UploadPresetDialog({
+  onUploaded,
+  snapshotMaterial,
+}: {
+  onUploaded: () => void
+  snapshotMaterial: () => PresetMaterial
+}) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
+  const [includeMaterial, setIncludeMaterial] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [front, setFront] = useState<SideFiles>({})
   const [back, setBack] = useState<SideFiles>({})
@@ -144,6 +217,7 @@ function UploadPresetDialog({ onUploaded }: { onUploaded: () => void }) {
     setName("")
     setFront({})
     setBack({})
+    setIncludeMaterial(true)
   }
 
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
@@ -188,7 +262,13 @@ function UploadPresetDialog({ onUploaded }: { onUploaded: () => void }) {
       const r = await fetch("/api/presets", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id, name: name.trim(), front: frontUrls, back: backUrls }),
+        body: JSON.stringify({
+          id,
+          name: name.trim(),
+          front: frontUrls,
+          back: backUrls,
+          material: includeMaterial ? snapshotMaterial() : undefined,
+        }),
       })
       if (!r.ok) throw new Error(`meta ${r.status}`)
 
@@ -249,6 +329,22 @@ function UploadPresetDialog({ onUploaded }: { onUploaded: () => void }) {
               ? `${totalCount} file${totalCount === 1 ? "" : "s"} ready to upload.`
               : "No files selected yet."}
           </p>
+
+          <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-muted/30 p-2.5 text-xs">
+            <input
+              type="checkbox"
+              checked={includeMaterial}
+              onChange={(e) => setIncludeMaterial(e.target.checked)}
+              className="mt-0.5 size-3.5 cursor-pointer accent-primary"
+            />
+            <span className="flex flex-col gap-0.5">
+              <span className="font-medium text-foreground">Include current material settings</span>
+              <span className="text-muted-foreground">
+                Saves card roughness, metalness, edge color, glare, holographic and foil settings together
+                with the textures. They&apos;ll be restored every time you load this design.
+              </span>
+            </span>
+          </label>
         </div>
 
         <DialogFooter className="mt-6">

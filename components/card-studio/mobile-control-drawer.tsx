@@ -9,7 +9,7 @@ import {
   DrawerContent,
   DrawerTitle,
 } from "@/components/ui/drawer"
-import { PanelHeader, PanelBody } from "./control-panel"
+import { PanelHeader, PanelTabs } from "./control-panel"
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
 
 /**
@@ -60,17 +60,13 @@ export function MobileControlDrawer() {
 
           {/* Header is draggable for closing */}
           <PanelHeader onCapture={onCapture} />
-          
+
           {/*
-            Scrollable body wrapped with data-vaul-no-drag so touch events
-            inside this area scroll the content instead of closing the drawer.
-            This is the key to allowing full scroll on mobile.
+            Tabs (Design / Settings) wrapped with data-vaul-no-drag so touch
+            events inside scroll the content instead of closing the drawer.
           */}
-          <div data-vaul-no-drag className="min-h-0 flex-1 overflow-hidden">
-            <PanelBody 
-              className="h-full max-h-[calc(85dvh-120px)] overflow-y-auto" 
-              onCapture={onCapture} 
-            />
+          <div data-vaul-no-drag className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <PanelTabs onCapture={onCapture} />
           </div>
         </DrawerContent>
       </Drawer>

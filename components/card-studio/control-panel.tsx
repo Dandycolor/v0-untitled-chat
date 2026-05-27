@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Separator } from "@/components/ui/separator"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PresetManager } from "./preset-manager"
 
 function Row({
@@ -237,7 +238,7 @@ export function PanelBody({ className, onCapture }: { className?: string; onCapt
     <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", className)}>
       <Accordion
         type="multiple"
-        defaultValue={["model", "designs", "fill", "card", "glare", "chip", "logo", "env", "capture"]}
+          defaultValue={["model", "fill", "card", "glare", "holo", "foil", "chip", "logo", "env", "capture"]}
         className="px-0"
       >
           <AccordionItem value="model" className="border-b">
@@ -344,33 +345,6 @@ export function PanelBody({ className, onCapture }: { className?: string; onCapt
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="designs" className="border-b">
-            <SectionTrigger icon={<Palette className="size-3.5" />} title="Designs (PBR)" />
-            <AccordionContent className="space-y-4 px-4 pb-4">
-              <PresetManager />
-              <Separator />
-              <div className="space-y-2">
-                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                  Texture orientation
-                </p>
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs text-muted-foreground">Flip horizontal</Label>
-                  <Switch
-                    checked={s.textureFlipH}
-                    onCheckedChange={(v) => s.set("textureFlipH", v)}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs text-muted-foreground">Flip vertical</Label>
-                  <Switch
-                    checked={s.textureFlipV}
-                    onCheckedChange={(v) => s.set("textureFlipV", v)}
-                  />
-                </div>
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-
           <AccordionItem value="fill" className="border-b">
             <SectionTrigger icon={<Paintbrush className="size-3.5" />} title="Solid fill" />
             <AccordionContent className="space-y-5 px-4 pb-4">
@@ -444,6 +418,28 @@ export function PanelBody({ className, onCapture }: { className?: string; onCapt
                   />
                 </div>
               </Row>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Texture orientation
+                </p>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">Flip horizontal</Label>
+                  <Switch
+                    checked={s.textureFlipH}
+                    onCheckedChange={(v) => s.set("textureFlipH", v)}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">Flip vertical</Label>
+                  <Switch
+                    checked={s.textureFlipV}
+                    onCheckedChange={(v) => s.set("textureFlipV", v)}
+                  />
+                </div>
+              </div>
             </AccordionContent>
           </AccordionItem>
 
@@ -942,6 +938,43 @@ export function PanelBody({ className, onCapture }: { className?: string; onCapt
 }
 
 /**
+ * Tabs that split studio controls into:
+ *   - "Design" — saved presets (PBR + per-design material) and management actions
+ *   - "Settings" — live tweakable parameters (model, fill, card material, glare,
+ *     lighting…). The Design tab is intentionally first because picking a saved
+ *     design is the most common starting action.
+ */
+export function PanelTabs({ onCapture }: { onCapture: () => void }) {
+  return (
+    <Tabs defaultValue="design" className="flex min-h-0 flex-1 flex-col gap-0">
+      <TabsList className="mx-3 mt-3 grid h-9 grid-cols-2">
+        <TabsTrigger value="design" className="text-xs">
+          <Palette className="mr-1.5 size-3.5" />
+          Design
+        </TabsTrigger>
+        <TabsTrigger value="settings" className="text-xs">
+          <Layers className="mr-1.5 size-3.5" />
+          Settings
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent
+        value="design"
+        // mt-0 cancels Radix's default vertical gap so the panel feels seamless;
+        // the inner div drives scroll independently of Settings tab state.
+        className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain p-4"
+      >
+        <PresetManager />
+      </TabsContent>
+
+      <TabsContent value="settings" className="mt-0 min-h-0 flex-1">
+        <PanelBody onCapture={onCapture} />
+      </TabsContent>
+    </Tabs>
+  )
+}
+
+/**
  * Desktop sidebar — hidden on mobile, visible from md breakpoint.
  */
 export function ControlPanel() {
@@ -953,7 +986,7 @@ export function ControlPanel() {
   return (
     <aside className="hidden h-full w-[340px] shrink-0 flex-col border-l bg-sidebar text-sidebar-foreground md:flex">
       <PanelHeader onCapture={onCapture} />
-      <PanelBody onCapture={onCapture} />
+      <PanelTabs onCapture={onCapture} />
     </aside>
   )
 }

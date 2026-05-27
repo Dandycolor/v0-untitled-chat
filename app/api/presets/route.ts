@@ -17,6 +17,11 @@ type PresetMeta = {
   name: string
   front: Record<string, string | undefined>
   back: Record<string, string | undefined>
+  /**
+   * Optional per-design material settings (roughness, glare, holo, foil…).
+   * Plain JSON object — schema validated client-side via the PresetMaterial type.
+   */
+  material?: Record<string, unknown>
   createdAt: number
 }
 
@@ -56,6 +61,7 @@ export async function POST(request: NextRequest) {
       name?: string
       front?: Record<string, string | undefined>
       back?: Record<string, string | undefined>
+      material?: Record<string, unknown>
     }
 
     const id = body.id || cryptoRandomId()
@@ -64,6 +70,7 @@ export async function POST(request: NextRequest) {
       name: body.name || "Untitled",
       front: body.front || {},
       back: body.back || {},
+      material: body.material,
       createdAt: Date.now(),
     }
 
@@ -77,6 +84,45 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error("[v0] create preset error:", err)
     return NextResponse.json({ error: "Failed to create preset" }, { status: 500 })
+  }
+}
+
+/**
+ * Updates a single preset's metadata (name and/or material settings) without
+ * re-uploading any textures. The body is shallow-merged into the existing meta.
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = (await request.json()) as {
+      id?: string
+      name?: string
+      material?: Record<string, unknown>
+    }
+    if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 })
+
+    const { blobs } = await list({ prefix: `presets/${body.id}/` })
+    const metaBlob = blobs.find((b) => b.pathname.endsWith("/meta.json"))
+    if (!metaBlob) return NextResponse.json({ error: "preset not found" }, { status: 404 })
+
+    const current = await readMeta(metaBlob.url)
+    if (!current) return NextResponse.json({ error: "meta unreadable" }, { status: 500 })
+
+    const next: PresetMeta = {
+      ...current,
+      name: body.name ?? current.name,
+      material: body.material ?? current.material,
+    }
+
+    await put(`presets/${body.id}/meta.json`, JSON.stringify(next), {
+      access: "public",
+      contentType: "application/json",
+      allowOverwrite: true,
+    })
+
+    return NextResponse.json({ preset: next })
+  } catch (err) {
+    console.error("[v0] update preset error:", err)
+    return NextResponse.json({ error: "Failed to update preset" }, { status: 500 })
   }
 }
 

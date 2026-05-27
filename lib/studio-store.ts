@@ -44,8 +44,78 @@ export type DesignPreset = {
   name: string
   front: PbrMapSet
   back: PbrMapSet
+  /**
+   * Per-design material overrides. Optional for backwards-compat with presets
+   * created before this field was introduced. When present, applying the preset
+   * also restores all card-material-level state (roughness, glare, holo, foil…).
+   * Scene-level state (env, lighting, chip, logo) intentionally NOT included so
+   * the user keeps their global studio setup when switching designs.
+   */
+  material?: PresetMaterial
   createdAt: number
 }
+
+/**
+ * The material-side state that travels with a design preset. Mirrors a subset
+ * of `StudioState` — keep this in sync with `MATERIAL_KEYS` in studio-store.
+ */
+export type PresetMaterial = {
+  cardRoughness: number
+  cardMetalness: number
+  cardNormalScale: number
+  cardClearcoat: number
+  cardClearcoatRoughness: number
+  cardEdgeColor: string
+  cardEdgeTint: number
+  textureFlipH: boolean
+  textureFlipV: boolean
+  glareMode: GlareMode
+  glareIntensity: number
+  glareRotation: number
+  glareWidth: number
+  glareSoftness: number
+  holoEnabled: boolean
+  holoIntensity: number
+  holoScale: number
+  holoHueShift: number
+  foilEnabled: boolean
+  foilSheen: number
+  foilSparkle: number
+  foilDensity: number
+  foilSparkleSize: number
+  foilTint: string
+}
+
+/**
+ * Keys whose values get snapshotted into / restored from a preset's `material`.
+ * Single source of truth used by both saving and applying logic.
+ */
+export const MATERIAL_KEYS = [
+  "cardRoughness",
+  "cardMetalness",
+  "cardNormalScale",
+  "cardClearcoat",
+  "cardClearcoatRoughness",
+  "cardEdgeColor",
+  "cardEdgeTint",
+  "textureFlipH",
+  "textureFlipV",
+  "glareMode",
+  "glareIntensity",
+  "glareRotation",
+  "glareWidth",
+  "glareSoftness",
+  "holoEnabled",
+  "holoIntensity",
+  "holoScale",
+  "holoHueShift",
+  "foilEnabled",
+  "foilSheen",
+  "foilSparkle",
+  "foilDensity",
+  "foilSparkleSize",
+  "foilTint",
+] as const satisfies readonly (keyof PresetMaterial)[]
 
 export type StudioState = {
   // Model
@@ -282,10 +352,21 @@ export const useStudio = create<StudioState>((set) => ({
   setFrontFill: (patch) => set((s) => ({ frontFill: { ...s.frontFill, ...patch } })),
   setBackFill: (patch) => set((s) => ({ backFill: { ...s.backFill, ...patch } })),
   applyPreset: (preset) =>
-    set(() => ({
-      activePresetId: preset.id,
-      frontPbr: preset.front,
-      backPbr: preset.back,
-    })),
+    set((s) => {
+      const next: Partial<StudioState> = {
+        activePresetId: preset.id,
+        frontPbr: preset.front,
+        backPbr: preset.back,
+      }
+      // If the preset carries baked material settings (new-format presets),
+      // restore them too so each design renders exactly how it was saved.
+      if (preset.material) {
+        for (const k of MATERIAL_KEYS) {
+          // The keys are typed via `satisfies`, so this cast is safe at runtime.
+          ;(next as Record<string, unknown>)[k] = preset.material[k]
+        }
+      }
+      return { ...s, ...next }
+    }),
   setPresets: (presets) => set(() => ({ presets })),
 }))
