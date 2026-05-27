@@ -177,21 +177,9 @@ export function CardModel() {
   })
 
   useMemo(() => {
-    console.log("[v0] analyzed meshes:", analyzed.map(a => ({
-      name: a.mesh.name,
-      role: a.role,
-      volume: a.volume.toFixed(4),
-      size: [a.size.x.toFixed(3), a.size.y.toFixed(3), a.size.z.toFixed(3)],
-      originalMaterial: (a.mesh.material as THREE.Material)?.name || (a.mesh.material as THREE.Material)?.type,
-    })))
     analyzed.forEach(({ mesh, role }) => {
       if (role === "body") mesh.material = cardMaterial
       else if (role === "chip") mesh.material = chipMaterial
-      else {
-        // Apply card material to all other meshes (e.g. back side mesh)
-        console.log("[v0] applying cardMaterial to 'other' mesh:", mesh.name)
-        mesh.material = cardMaterial
-      }
     })
   }, [analyzed, cardMaterial, chipMaterial])
 

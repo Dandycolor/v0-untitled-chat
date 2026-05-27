@@ -326,11 +326,10 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <map_fragment>",
         `#ifdef USE_MAP
-          float csBmap = cs_sideBlend();
-          vec4 sampledFront = texture2D(uFrontAlbedo, vMapUv);
-          vec4 sampledBack = texture2D(uBackAlbedo, vMapUv);
-          vec4 sampledDiffuseColor = mix(sampledBack, sampledFront, csBmap);
-          diffuseColor *= sampledDiffuseColor;
+          // VISUAL DEBUG: red = front (gl_FrontFacing=true), green = back (false)
+          // If you see GRAY anywhere, that mesh is NOT using this shader at all.
+          vec3 debugColor = gl_FrontFacing ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
+          diffuseColor.rgb = debugColor;
         #endif`,
       )
 
