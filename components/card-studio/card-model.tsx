@@ -26,7 +26,7 @@ type AnalyzedMesh = {
   role: "body" | "chip" | "other"
 }
 
-function ensurePlanarUv(mesh: THREE.Mesh, sideAxis: 0 | 1 | 2) {
+function ensurePlanarUv(mesh: THREE.Mesh, sideAxis: 0 | 1 | 2, flipU = false) {
   const geo = mesh.geometry
   geo.computeBoundingBox()
   const bbox = geo.boundingBox!
@@ -41,7 +41,7 @@ function ensurePlanarUv(mesh: THREE.Mesh, sideAxis: 0 | 1 | 2) {
       (pos.getComponent(i, axes[0]) - bbox.min.getComponent(axes[0])) / (size.getComponent(axes[0]) || 1)
     const a1 =
       (pos.getComponent(i, axes[1]) - bbox.min.getComponent(axes[1])) / (size.getComponent(axes[1]) || 1)
-    u[i * 2] = a0
+    u[i * 2] = flipU ? 1 - a0 : a0
     u[i * 2 + 1] = a1
   }
   geo.setAttribute("uv", new THREE.BufferAttribute(u, 2))
@@ -97,9 +97,11 @@ function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAx
       e.role = "chip"
     } else if (footprintRatio >= 0.4 && withinFootprint) {
       // Similar footprint to body → back-face plane (separate mesh covering the back)
-      // Treat as body so it gets the card material
+      // Treat as body so it gets the card material.
+      // flipU=true mirrors the U coordinate so the back texture reads correctly
+      // when viewed from behind (the back mesh's normal points opposite to body's).
       e.role = "body"
-      ensurePlanarUv(e.mesh, sideAxis)
+      ensurePlanarUv(e.mesh, sideAxis, true)
     }
   }
 
