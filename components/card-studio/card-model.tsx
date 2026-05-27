@@ -171,12 +171,21 @@ export function CardModel() {
     ;(loader as unknown as GLTFLoader).setCrossOrigin("anonymous")
   })
 
-  const { analyzed, sideAxis, bodyMesh, bodyBBox, bodyCenter, normScale, normOffset } = useMemo(() => {
+  const { analyzed, sideAxis, bodyMesh, bodyBBox, bodyCenter, bodyMeshLocalCenter, normScale, normOffset } = useMemo(() => {
     gltf.scene.updateMatrixWorld(true)
     const { analyzed, sideAxis } = analyzeMeshes(gltf.scene)
     const body = analyzed.find((a) => a.role === "body")
     const bbox = body?.bbox ?? new THREE.Box3().setFromObject(gltf.scene)
     const center = bbox.getCenter(new THREE.Vector3())
+
+    // Compute body center in mesh-local coordinates (not transformed by rel matrix).
+    // This is needed for the shader since gl_Position uses mesh-local position.
+    let meshLocalCenter = new THREE.Vector3()
+    if (body?.mesh) {
+      body.mesh.geometry.computeBoundingBox()
+      const localBox = body.mesh.geometry.boundingBox!
+      localBox.getCenter(meshLocalCenter)
+    }
     const size = bbox.getSize(new THREE.Vector3())
     const maxSide = Math.max(size.x, size.y, size.z) || 1
     const TARGET = 1.6
@@ -188,6 +197,7 @@ export function CardModel() {
       bodyMesh: body?.mesh,
       bodyBBox: bbox,
       bodyCenter: center,
+      bodyMeshLocalCenter: meshLocalCenter,
       normScale: scale,
       normOffset: offset.toArray() as [number, number, number],
     }
@@ -205,7 +215,7 @@ export function CardModel() {
     clearcoat: cardClearcoat,
     clearcoatRoughness: cardClearcoatRoughness,
     sideAxis,
-    cardCenter: bodyCenter.getComponent(sideAxis),
+    cardCenter: bodyMeshLocalCenter.getComponent(sideAxis),
     flipH: textureFlipH,
     flipV: textureFlipV,
     edgeColor: cardEdgeColor,
