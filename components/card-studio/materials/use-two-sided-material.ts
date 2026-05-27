@@ -234,7 +234,9 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
   } | null>(null)
 
   const material = useMemo(() => {
-    const mat = new THREE.MeshPhysicalMaterial({})
+    const mat = new THREE.MeshPhysicalMaterial({
+    side: THREE.DoubleSide, // Render both front and back faces
+  })
 
     // Base maps — needed so Three enables the corresponding shader chunks.
     mat.map = frontAlbedo.tex
@@ -311,11 +313,10 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         uniform float uEdgeTint;
         float cs_sideBlend() {
           // Use object-space normal to determine front/back side
-          // For a card, the normal points outward from the surface
           // Front side has positive normal along sideAxis, back has negative
           float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
-          // c > 0 means front face, c < 0 means back face
-          return step(0.0, c);
+          // Smooth transition to avoid edge artifacts
+          return smoothstep(-0.1, 0.1, c);
         }
         float cs_edgeMask() {
           float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
