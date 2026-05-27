@@ -540,6 +540,43 @@ function EditPresetDialog({
             />
           </div>
 
+          {/* Show current material if it exists */}
+          {preset.material && (
+            <div className="space-y-2 rounded-md border bg-muted/20 p-2.5">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Current material
+              </p>
+              <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Roughness:</span>
+                  <span className="font-mono font-medium">{preset.material.cardRoughness.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Metalness:</span>
+                  <span className="font-mono font-medium">{preset.material.cardMetalness.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Clearcoat:</span>
+                  <span className="font-mono font-medium">{preset.material.cardClearcoat.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Glare:</span>
+                  <span className="font-mono font-medium">
+                    {preset.material.glareMode !== "none" ? "✓" : "—"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Holo:</span>
+                  <span className="font-mono font-medium">{preset.material.holoEnabled ? "✓" : "—"}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Foil:</span>
+                  <span className="font-mono font-medium">{preset.material.foilEnabled ? "✓" : "—"}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-muted/30 p-2.5 text-xs">
             <input
               type="checkbox"
@@ -550,7 +587,9 @@ function EditPresetDialog({
             <span className="flex flex-col gap-0.5">
               <span className="font-medium text-foreground">Update material settings</span>
               <span className="text-muted-foreground">
-                Save the current card roughness, glare, holographic and foil settings to this design.
+                {preset.material
+                  ? "Replace the saved material with current settings."
+                  : "Save the current card roughness, glare, holographic and foil settings to this design."}
               </span>
             </span>
           </label>
