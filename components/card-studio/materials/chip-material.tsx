@@ -58,11 +58,9 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
       shader.vertexShader = shader.vertexShader.replace(
         "#include <uv_vertex>",
         `#include <uv_vertex>
-         // Use world-space XY for uniform noise pattern across all chip elements.
-         // This ensures the brushed metal pattern is consistent regardless of
-         // UV mapping differences between the vertical EMV contact and side pads.
-         vec4 worldPos = modelMatrix * vec4(position, 1.0);
-         vChipUv = worldPos.xy;`,
+         // Use object-space XZ (card plane) for uniform noise pattern.
+         // Scale by large factor so noise frequency is appropriate.
+         vChipUv = position.xz * 50.0;`,
       )
 
       shader.fragmentShader = shader.fragmentShader.replace(
