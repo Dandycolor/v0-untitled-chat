@@ -236,6 +236,7 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
   const material = useMemo(() => {
     const mat = new THREE.MeshPhysicalMaterial({
     side: THREE.DoubleSide, // Render both front and back faces
+    envMapIntensity: 1.2, // Enhance environment reflections for visible clearcoat effect
   })
 
     // Base maps — needed so Three enables the corresponding shader chunks.
@@ -401,6 +402,18 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         `#include <clearcoat_normal_fragment_maps>
         clearcoatNormal = normalize(mix(nonPerturbedNormal, clearcoatNormal, cs_sideBlend()));`,
       )
+
+      // --- Clearcoat mask inversion for simple mode.
+      // In simple mode, the clearcoat mask uses convention: black = glossy, white = matte.
+      // Three.js default: white = full clearcoat, black = no clearcoat.
+      // We invert the sampled value to match the expected convention.
+      if (isSimple) {
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "material.clearcoat *= texture2D( clearcoatMap, vClearcoatMapUv ).x;",
+          "material.clearcoat *= (1.0 - texture2D( clearcoatMap, vClearcoatMapUv ).x);",
+        )
+      }
+
       shader.fragmentShader = shader.fragmentShader.replaceAll(
         "texture2D( aoMap, vAoMapUv ).r",
         "CARD_AO_SAMPLE",
