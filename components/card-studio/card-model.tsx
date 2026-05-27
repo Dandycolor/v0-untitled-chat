@@ -67,6 +67,27 @@ function forceFlatNormals(mesh: THREE.Mesh, sideAxis: 0 | 1 | 2, sign: 1 | -1) {
   geo.computeTangents()
 }
 
+function setSideAttributeUniform(mesh: THREE.Mesh, value: number) {
+  // Single value for all vertices - used for flat planar front/back meshes.
+  const geo = mesh.geometry
+  const count = geo.attributes.position.count
+  const arr = new Float32Array(count).fill(value)
+  geo.setAttribute("aSide", new THREE.BufferAttribute(arr, 1))
+}
+
+function setSideAttributePerVertex(mesh: THREE.Mesh, sideAxis: 0 | 1 | 2, center: number) {
+  // Per-vertex value based on geometry position along sideAxis.
+  // Used for the main body mesh which has both front and back faces with rounded edges.
+  const geo = mesh.geometry
+  const pos = geo.attributes.position
+  const arr = new Float32Array(pos.count)
+  for (let i = 0; i < pos.count; i++) {
+    const v = pos.getComponent(i, sideAxis)
+    arr[i] = v >= center ? 1.0 : 0.0
+  }
+  geo.setAttribute("aSide", new THREE.BufferAttribute(arr, 1))
+}
+
 function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAxis: 0 | 1 | 2 } {
   const meshes: THREE.Mesh[] = []
   root.traverse((o) => {
@@ -127,10 +148,22 @@ function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAx
       // which side they represent. These are thin planar meshes, not the main body
       // with rounded edges.
       forceFlatNormals(e.mesh, sideAxis, isBack ? -1 : 1)
+      // Set per-vertex side attribute: 1.0 for front, 0.0 for back.
+      setSideAttributeUniform(e.mesh, isBack ? 0.0 : 1.0)
     }
   }
 
   ensurePlanarUv(body.mesh, sideAxis)
+  // For the main body mesh with rounded edges, set per-vertex side attribute
+  // based on each vertex's position along sideAxis relative to body center.
+  // This works correctly even on rounded edges since each vertex is classified individually.
+  // Note: bodyCenterAxis is in root-local coordinates, but body.mesh.geometry.position
+  // is in mesh-local coordinates. We need to convert using the rel matrix.
+  // Simpler approach: compute mesh-local center from the geometry's own bounding box.
+  body.mesh.geometry.computeBoundingBox()
+  const localBox = body.mesh.geometry.boundingBox!
+  const localCenter = (localBox.min.getComponent(sideAxis) + localBox.max.getComponent(sideAxis)) / 2
+  setSideAttributePerVertex(body.mesh, sideAxis, localCenter)
   // Don't force flat normals on main body - it has rounded edges that need proper normals
 
   return { analyzed: entries, sideAxis }
@@ -171,21 +204,12 @@ export function CardModel() {
     ;(loader as unknown as GLTFLoader).setCrossOrigin("anonymous")
   })
 
-  const { analyzed, sideAxis, bodyMesh, bodyBBox, bodyCenter, bodyMeshLocalCenter, normScale, normOffset } = useMemo(() => {
+  const { analyzed, sideAxis, bodyMesh, bodyBBox, bodyCenter, normScale, normOffset } = useMemo(() => {
     gltf.scene.updateMatrixWorld(true)
     const { analyzed, sideAxis } = analyzeMeshes(gltf.scene)
     const body = analyzed.find((a) => a.role === "body")
     const bbox = body?.bbox ?? new THREE.Box3().setFromObject(gltf.scene)
     const center = bbox.getCenter(new THREE.Vector3())
-
-    // Compute body center in mesh-local coordinates (not transformed by rel matrix).
-    // This is needed for the shader since gl_Position uses mesh-local position.
-    let meshLocalCenter = new THREE.Vector3()
-    if (body?.mesh) {
-      body.mesh.geometry.computeBoundingBox()
-      const localBox = body.mesh.geometry.boundingBox!
-      localBox.getCenter(meshLocalCenter)
-    }
     const size = bbox.getSize(new THREE.Vector3())
     const maxSide = Math.max(size.x, size.y, size.z) || 1
     const TARGET = 1.6
@@ -197,7 +221,6 @@ export function CardModel() {
       bodyMesh: body?.mesh,
       bodyBBox: bbox,
       bodyCenter: center,
-      bodyMeshLocalCenter: meshLocalCenter,
       normScale: scale,
       normOffset: offset.toArray() as [number, number, number],
     }
@@ -215,7 +238,6 @@ export function CardModel() {
     clearcoat: cardClearcoat,
     clearcoatRoughness: cardClearcoatRoughness,
     sideAxis,
-    cardCenter: bodyMeshLocalCenter.getComponent(sideAxis),
     flipH: textureFlipH,
     flipV: textureFlipV,
     edgeColor: cardEdgeColor,
