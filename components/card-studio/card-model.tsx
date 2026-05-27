@@ -218,10 +218,16 @@ export function CardModel() {
 
   useMemo(() => {
     analyzed.forEach(({ mesh, role }) => {
-      if (role === "body") mesh.material = cardMaterial
-      else if (role === "chip") mesh.material = chipMaterial
+      if (role === "body") {
+        mesh.material = cardMaterial
+      } else if (role === "chip") {
+        mesh.material = chipMaterial
+        // Force all chip elements to have the same flat normals pointing toward +sideAxis.
+        // This ensures uniform lighting/highlights across all chip pads (center EMV + sides).
+        forceFlatNormals(mesh, sideAxis, 1)
+      }
     })
-  }, [analyzed, cardMaterial, chipMaterial])
+  }, [analyzed, cardMaterial, chipMaterial, sideAxis])
 
   const logoTexture = useLogoTexture()
 
