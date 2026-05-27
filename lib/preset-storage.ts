@@ -72,10 +72,14 @@ async function idbDelete(key: string): Promise<void> {
 type StoredPreset = {
   id: string
   name: string
+  /** Preset type: "simple" or "pbr" */
+  type?: "simple" | "pbr"
   /** Keys into IndexedDB for front-side textures */
   front: Record<string, string>
   /** Keys into IndexedDB for back-side textures */
   back: Record<string, string>
+  /** Background color for simple presets */
+  backColor?: string
   material?: PresetMaterial
   createdAt: number
 }
@@ -129,8 +133,10 @@ export async function loadPresets(): Promise<DesignPreset[]> {
     results.push({
       id: p.id,
       name: p.name,
+      type: p.type,
       front,
       back,
+      backColor: p.backColor,
       material: p.material,
       createdAt: p.createdAt,
     })
@@ -145,11 +151,13 @@ export async function loadPresets(): Promise<DesignPreset[]> {
 export async function savePreset(params: {
   id: string
   name: string
+  type?: "simple" | "pbr"
   frontFiles: Record<string, File>
   backFiles: Record<string, File>
+  backColor?: string
   material?: PresetMaterial
 }): Promise<DesignPreset> {
-  const { id, name, frontFiles, backFiles, material } = params
+  const { id, name, type, frontFiles, backFiles, backColor, material } = params
 
   const front: Record<string, string> = {}
   const back: Record<string, string> = {}
@@ -177,8 +185,10 @@ export async function savePreset(params: {
   const newEntry: StoredPreset = {
     id,
     name,
+    type,
     front,
     back,
+    backColor,
     material,
     createdAt: Date.now(),
   }
@@ -188,8 +198,10 @@ export async function savePreset(params: {
   return {
     id,
     name,
+    type,
     front: frontUrls,
     back: backUrls,
+    backColor,
     material,
     createdAt: newEntry.createdAt,
   }

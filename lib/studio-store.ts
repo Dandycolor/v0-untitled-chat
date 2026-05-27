@@ -42,8 +42,12 @@ export type PbrMapSet = {
 export type DesignPreset = {
   id: string
   name: string
+  /** Preset type: "simple" for albedo+gloss, "pbr" for full PBR */
+  type?: "simple" | "pbr"
   front: PbrMapSet
   back: PbrMapSet
+  /** Background color for simple presets (back side) */
+  backColor?: string
   /**
    * Per-design material overrides. Optional for backwards-compat with presets
    * created before this field was introduced. When present, applying the preset
@@ -358,6 +362,12 @@ export const useStudio = create<StudioState>((set) => ({
         frontPbr: preset.front,
         backPbr: preset.back,
       }
+      
+      // For Simple presets with backColor, set backFill to solid color
+      if (preset.type === "simple" && preset.backColor) {
+        next.backFill = { type: "solid", color1: preset.backColor, color2: preset.backColor, angle: 0 }
+      }
+      
       // If the preset carries baked material settings (new-format presets),
       // restore them too so each design renders exactly how it was saved.
       if (preset.material) {

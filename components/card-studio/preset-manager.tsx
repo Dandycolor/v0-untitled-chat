@@ -259,7 +259,8 @@ function PresetRow({
 
 /**
  * Material editing sliders for an expanded preset.
- * Reads current values from studio store, not from the preset itself.
+ * For Simple presets: only Roughness and Clearcoat.
+ * For PBR presets: full set of sliders.
  */
 function MaterialSliders({
   preset,
@@ -269,6 +270,8 @@ function MaterialSliders({
   setStudioState: (key: string, value: unknown) => void
 }) {
   if (!preset.material) return null
+
+  const isSimple = preset.type === "simple"
 
   // Read current values from store, not from preset snapshot
   const cardRoughness = useStudio((s) => s.cardRoughness)
@@ -291,6 +294,31 @@ function MaterialSliders({
   const foilDensity = useStudio((s) => s.foilDensity)
   const foilSparkleSize = useStudio((s) => s.foilSparkleSize)
 
+  // Simple preset: only 2 sliders
+  if (isSimple) {
+    return (
+      <div className="space-y-2">
+        <SliderRow
+          label="Roughness"
+          value={cardRoughness}
+          min={0}
+          max={1}
+          step={0.01}
+          onChange={(v) => setStudioState("cardRoughness", v)}
+        />
+        <SliderRow
+          label="Clearcoat"
+          value={cardClearcoat}
+          min={0}
+          max={1}
+          step={0.01}
+          onChange={(v) => setStudioState("cardClearcoat", v)}
+        />
+      </div>
+    )
+  }
+
+  // PBR preset: full sliders
   return (
     <div className="space-y-2">
       <SliderRow
@@ -535,8 +563,10 @@ function CreateSimpleDialog({
       await savePreset({
         id: crypto.randomUUID(),
         name: name.trim(),
+        type: "simple",
         frontFiles,
         backFiles,
+        backColor: backMode === "color" ? backColor : undefined,
         material: includeMaterial ? snapshotMaterial() : undefined,
       })
 
@@ -792,6 +822,7 @@ function UploadPresetDialog({
       await savePreset({
         id: generatePresetId(),
         name: name.trim(),
+        type: "pbr",
         frontFiles: front as Record<string, File>,
         backFiles: back as Record<string, File>,
         material: includeMaterial ? snapshotMaterial() : undefined,
@@ -819,7 +850,7 @@ function UploadPresetDialog({
     >
       <DialogTrigger asChild>
         <Button size="sm" variant="outline" className="h-7 gap-1 bg-transparent">
-          <Plus className="size-3.5" /> New
+          <Plus className="size-3.5" /> PBR
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
@@ -1009,6 +1040,7 @@ function ChannelRow({
 
 /**
  * Dialog to edit preset name, replace textures, and update material settings.
+ * Shows different UI for Simple vs PBR presets.
  */
 function EditPresetDialog({
   preset,
@@ -1020,18 +1052,33 @@ function EditPresetDialog({
   const presets = useStudio((s) => s.presets)
   const setPresets = useStudio((s) => s.setPresets)
 
+  const isSimple = preset.type === "simple"
+
   const [open, setOpen] = useState(false)
   const [editName, setEditName] = useState(preset.name)
   const [includeMaterial, setIncludeMaterial] = useState(!!preset.material)
   const [updating, setUpdating] = useState(false)
+  
+  // Simple mode state
+  const [frontAlbedo, setFrontAlbedo] = useState<File | null>(null)
+  const [frontGloss, setFrontGloss] = useState<File | null>(null)
+  const [backDesign, setBackDesign] = useState<File | null>(null)
+  const [backColor, setBackColor] = useState(preset.backColor || "#ffffff")
+  
+  // PBR mode state
   const [front, setFront] = useState<SideFiles>({})
   const [back, setBack] = useState<SideFiles>({})
 
-  const totalCount = Object.keys(front).length + Object.keys(back).length
+  const totalCount = isSimple
+    ? (frontAlbedo ? 1 : 0) + (frontGloss ? 1 : 0) + (backDesign ? 1 : 0)
+    : Object.keys(front).length + Object.keys(back).length
 
-  const resetTextures = () => {
+  const resetAll = () => {
     setFront({})
     setBack({})
+    setFrontAlbedo(null)
+    setFrontGloss(null)
+    setBackDesign(null)
   }
 
   const handleSave = async () => {
@@ -1042,10 +1089,23 @@ function EditPresetDialog({
 
     setUpdating(true)
     try {
+      let frontFiles: Record<string, File> = {}
+      let backFiles: Record<string, File> = {}
+
+      if (isSimple) {
+        if (frontAlbedo) frontFiles.albedo = frontAlbedo
+        if (frontGloss) frontFiles.metallic = frontGloss
+        if (backDesign) backFiles.albedo = backDesign
+      } else {
+        frontFiles = front as Record<string, File>
+        backFiles = back as Record<string, File>
+      }
+
       // Save updated name, textures, and optionally new material
       const updatedPreset: DesignPreset = {
         ...preset,
         name: editName.trim(),
+        backColor: isSimple ? backColor : preset.backColor,
         material: includeMaterial ? snapshotMaterial() : preset.material,
         createdAt: preset.createdAt,
       }
@@ -1053,8 +1113,10 @@ function EditPresetDialog({
       await savePreset({
         id: preset.id,
         name: updatedPreset.name,
-        frontFiles: front as Record<string, File>,
-        backFiles: back as Record<string, File>,
+        type: preset.type,
+        frontFiles,
+        backFiles,
+        backColor: isSimple ? backColor : undefined,
         material: updatedPreset.material,
       })
 
@@ -1063,7 +1125,7 @@ function EditPresetDialog({
 
       toast.success("Preset updated")
       setOpen(false)
-      resetTextures()
+      resetAll()
     } catch (err) {
       console.error("[v0] preset update error:", err)
       toast.error("Failed to update preset")
@@ -1086,19 +1148,21 @@ function EditPresetDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit Design</DialogTitle>
+          <DialogTitle>Edit {isSimple ? "Simple" : "PBR"} Design</DialogTitle>
           <DialogDescription>
-            Update the preset name, replace textures, and material settings.
+            {isSimple
+              ? "Update design images and back color."
+              : "Update the preset name, replace textures, and material settings."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 max-h-[60vh] overflow-y-auto">
           <div className="space-y-2">
-            <Label htmlFor="preset-name" className="text-sm">
+            <Label htmlFor="edit-preset-name" className="text-sm">
               Preset name
             </Label>
             <Input
-              id="preset-name"
+              id="edit-preset-name"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
               placeholder="e.g., My custom design"
@@ -1106,22 +1170,66 @@ function EditPresetDialog({
             />
           </div>
 
-          {/* Texture replacement */}
-          <div className="space-y-2">
-            <Label className="text-sm">Replace textures (optional)</Label>
-            <div className="grid grid-cols-1 gap-3">
-              <SidePanel label="Front" side="front" files={front} onChange={setFront} />
-              <SidePanel label="Back" side="back" files={back} onChange={setBack} />
+          {/* Simple mode texture replacement */}
+          {isSimple ? (
+            <div className="space-y-3">
+              <Label className="text-sm">Replace images (optional)</Label>
+              
+              {/* Front */}
+              <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                <p className="text-xs font-medium uppercase text-muted-foreground">Front</p>
+                <FileInput
+                  label="Design (Albedo)"
+                  file={frontAlbedo}
+                  onFile={setFrontAlbedo}
+                  accept="image/*"
+                />
+                <FileInput
+                  label="Gloss (Metallic)"
+                  file={frontGloss}
+                  onFile={setFrontGloss}
+                  accept="image/*"
+                />
+              </div>
+              
+              {/* Back */}
+              <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                <p className="text-xs font-medium uppercase text-muted-foreground">Back</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Background color</span>
+                  <input
+                    type="color"
+                    value={backColor}
+                    onChange={(e) => setBackColor(e.target.value)}
+                    className="size-7 rounded cursor-pointer"
+                  />
+                </div>
+                <FileInput
+                  label="Design (optional)"
+                  file={backDesign}
+                  onFile={setBackDesign}
+                  accept="image/*"
+                />
+              </div>
             </div>
-            {totalCount > 0 && (
-              <p className="text-xs text-muted-foreground">
-                {totalCount} file{totalCount === 1 ? "" : "s"} ready to replace.
-              </p>
-            )}
-          </div>
+          ) : (
+            /* PBR mode texture replacement */
+            <div className="space-y-2">
+              <Label className="text-sm">Replace textures (optional)</Label>
+              <div className="grid grid-cols-1 gap-3">
+                <SidePanel label="Front" side="front" files={front} onChange={setFront} />
+                <SidePanel label="Back" side="back" files={back} onChange={setBack} />
+              </div>
+              {totalCount > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {totalCount} file{totalCount === 1 ? "" : "s"} ready to replace.
+                </p>
+              )}
+            </div>
+          )}
 
-          {/* Current material info */}
-          {preset.material && (
+          {/* Current material info - only for PBR */}
+          {!isSimple && preset.material && (
             <div className="space-y-2 rounded-md border bg-muted/20 p-2.5">
               <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 Current material
@@ -1132,26 +1240,8 @@ function EditPresetDialog({
                   <span className="font-mono font-medium">{preset.material.cardRoughness.toFixed(2)}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Metalness:</span>
-                  <span className="font-mono font-medium">{preset.material.cardMetalness.toFixed(2)}</span>
-                </div>
-                <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Clearcoat:</span>
                   <span className="font-mono font-medium">{preset.material.cardClearcoat.toFixed(2)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Glare:</span>
-                  <span className="font-mono font-medium">
-                    {preset.material.glareMode !== "none" ? "✓" : "—"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Holo:</span>
-                  <span className="font-mono font-medium">{preset.material.holoEnabled ? "✓" : "—"}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Foil:</span>
-                  <span className="font-mono font-medium">{preset.material.foilEnabled ? "✓" : "—"}</span>
                 </div>
               </div>
             </div>
@@ -1169,7 +1259,7 @@ function EditPresetDialog({
               <span className="text-muted-foreground">
                 {preset.material
                   ? "Replace the saved material with current settings."
-                  : "Save the current card roughness, glare, holographic and foil settings to this design."}
+                  : "Save the current card roughness and clearcoat settings to this design."}
               </span>
             </span>
           </label>
