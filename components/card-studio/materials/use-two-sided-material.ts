@@ -95,6 +95,7 @@ function useMaybeTexture(
       try {
         const blob = await fetchTextureBlob(resolved, ac.signal)
         if (cancelled) return
+        console.log("[v0] useMaybeTexture got blob:", resolved, "type:", blob.type, "size:", blob.size)
         const objectUrl = URL.createObjectURL(blob)
         const img = new Image()
         img.decoding = "async"
