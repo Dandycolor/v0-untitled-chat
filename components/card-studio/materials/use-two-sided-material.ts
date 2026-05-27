@@ -310,9 +310,12 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         uniform vec3 uEdgeColor;
         uniform float uEdgeTint;
         float cs_sideBlend() {
-          // gl_FrontFacing = true when camera sees the front-facing polygon
-          // Return 1.0 for front (use front texture), 0.0 for back (use back texture)
-          return gl_FrontFacing ? 1.0 : 0.0;
+          // Use object-space normal to determine front/back side
+          // For a card, the normal points outward from the surface
+          // Front side has positive normal along sideAxis, back has negative
+          float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
+          // c > 0 means front face, c < 0 means back face
+          return step(0.0, c);
         }
         float cs_edgeMask() {
           float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
