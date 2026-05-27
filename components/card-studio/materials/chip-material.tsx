@@ -58,7 +58,9 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
       shader.vertexShader = shader.vertexShader.replace(
         "#include <uv_vertex>",
         `#include <uv_vertex>
-         vChipUv = uv;`,
+         // For the vertical EMV element (where uv.y varies more than uv.x after scaling),
+         // transpose UV to make the pattern horizontal instead of vertical.
+         vChipUv = (uv.y > uv.x * 2.0) ? uv.yx : uv;`,
       )
 
       shader.fragmentShader = shader.fragmentShader.replace(
