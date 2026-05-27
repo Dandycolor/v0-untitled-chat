@@ -50,23 +50,30 @@ export async function savePreset(params: {
   material?: PresetMaterial
 }): Promise<DesignPreset> {
   const { id, name, type, frontFiles, backFiles, backColor, material } = params
-
+  
+  console.log("[v0] savePreset starting:", { id, name, type, frontCount: Object.keys(frontFiles).length, backCount: Object.keys(backFiles).length })
+  
   const frontUrls: Record<string, string> = {}
   const backUrls: Record<string, string> = {}
 
   // Upload front textures to Blob
   for (const [mapType, file] of Object.entries(frontFiles)) {
+    console.log("[v0] uploading front texture:", mapType)
     const url = await uploadTexture(id, "front", mapType, file)
     frontUrls[mapType] = url
+    console.log("[v0] uploaded front texture:", { mapType, url })
   }
 
   // Upload back textures to Blob
   for (const [mapType, file] of Object.entries(backFiles)) {
+    console.log("[v0] uploading back texture:", mapType)
     const url = await uploadTexture(id, "back", mapType, file)
     backUrls[mapType] = url
+    console.log("[v0] uploaded back texture:", { mapType, url })
   }
 
   // Save metadata to Supabase
+  console.log("[v0] saving metadata to Supabase...")
   const res = await fetch("/api/presets", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -87,6 +94,7 @@ export async function savePreset(params: {
     throw new Error("Failed to save preset")
   }
 
+  console.log("[v0] preset saved successfully")
   const { preset } = await res.json()
   
   return {
@@ -165,13 +173,21 @@ async function uploadTexture(
   const ext = file.name.split(".").pop() || "png"
   const pathname = `presets/${presetId}/${side}_${channel}.${ext}`
 
-  const blob = await upload(pathname, file, {
-    access: "public",
-    handleUploadUrl: "/api/blob/upload",
-    clientPayload: JSON.stringify({ addRandomSuffix: true }),
-  })
-
-  return blob.url
+  console.log("[v0] uploadTexture:", { pathname, fileSize: file.size, fileType: file.type })
+  
+  try {
+    const blob = await upload(pathname, file, {
+      access: "public",
+      handleUploadUrl: "/api/blob/upload",
+      clientPayload: JSON.stringify({ addRandomSuffix: true }),
+    })
+    
+    console.log("[v0] uploadTexture success:", { pathname, url: blob.url })
+    return blob.url
+  } catch (err) {
+    console.error("[v0] uploadTexture failed:", { pathname, error: (err as Error).message })
+    throw err
+  }
 }
 
 /**
