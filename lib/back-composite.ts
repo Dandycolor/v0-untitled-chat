@@ -1,8 +1,8 @@
 "use client"
 
 import * as THREE from "three"
-import { resolveTextureUrl } from "./texture-url"
-import { fetchTextureBlob } from "./fetch-texture-blob"
+import { resolveTextureUrl } from "@/lib/texture-url"
+import { fetchTextureBlob } from "@/lib/fetch-texture-blob"
 
 /**
  * Builds a CanvasTexture for the back side by:
@@ -22,6 +22,7 @@ export function makeBackCompositeTexture(
   flipH: boolean,
   flipV: boolean,
 ): { texture: THREE.CanvasTexture; dispose: () => void } {
+  console.log("[v0] makeBackCompositeTexture:", { backColor, backTemplateUrl, flipH, flipV })
   const W = 1024
   const H = 640
   const canvas = document.createElement("canvas")
