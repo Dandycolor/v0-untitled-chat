@@ -575,7 +575,6 @@ function EditPresetDialog({
     </Dialog>
   )
 }
-}
 
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
