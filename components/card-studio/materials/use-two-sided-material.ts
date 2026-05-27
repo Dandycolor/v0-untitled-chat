@@ -312,13 +312,13 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         uniform vec3 uEdgeColor;
         uniform float uEdgeTint;
         float cs_sideBlend() {
-          // Body mesh has normals along +sideAxis (front face).
-          // Separate back-face mesh has normals along -sideAxis.
-          // Returns 1.0 for front (use front textures), 0.0 for back (use back textures).
-          float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
-          return smoothstep(-0.1, 0.1, c);
+          // Use gl_FrontFacing to determine front vs back.
+          // This is more reliable than vObjectNormal as it works correctly
+          // on rounded edges and doesn't require forcing normals.
+          return gl_FrontFacing ? 1.0 : 0.0;
         }
         float cs_edgeMask() {
+          // Edge detection still uses object normal to find side faces
           float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
           return 1.0 - smoothstep(0.05, 0.35, abs(c));
         }`,

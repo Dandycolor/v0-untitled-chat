@@ -123,14 +123,12 @@ function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAx
       const isBack = eCenterAxis < bodyCenterAxis
       e.role = "body"
       ensurePlanarUv(e.mesh, sideAxis, isBack)
-      // Force flat normals so the shader's cs_sideBlend() correctly detects which side.
-      forceFlatNormals(e.mesh, sideAxis, isBack ? -1 : 1)
+      // Don't force flat normals - it breaks edge lighting on curved/rounded edges
     }
   }
 
   ensurePlanarUv(body.mesh, sideAxis)
-  // Body is the bulk of the card; treat its visible face as the front side.
-  forceFlatNormals(body.mesh, sideAxis, 1)
+  // Don't force flat normals on body - it breaks edge lighting on rounded corners
 
   return { analyzed: entries, sideAxis }
 }
