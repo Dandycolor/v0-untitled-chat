@@ -28,7 +28,7 @@ export async function loadPresets(): Promise<DesignPreset[]> {
   return presets.map((p: ApiPreset) => ({
     id: p.id,
     name: p.name,
-    type: p.type || "pbr", // Default to pbr for backwards compatibility
+    type: p.type || "pbr",
     front: filterNulls(p.front),
     back: filterNulls(p.back),
     backColor: p.backColor,
