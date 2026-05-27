@@ -58,14 +58,12 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
       shader.vertexShader = shader.vertexShader.replace(
         "#include <uv_vertex>",
         `#include <uv_vertex>
-         // Detect vertical elements (thin X, wide Y) and scale X up to compress the noise
-         // vertically and stretch it horizontally, making the pattern horizontal instead of vertical.
+         // Detect vertical EMV element in the center: X near 0.5, Y varies full range.
+         // Scale X coordinate up to compress noise vertically and make pattern horizontal.
          vec2 chipUv = uv;
-         float xRange = fwidth(uv.x) * 100.0; // rough measure of X variation
-         float yRange = fwidth(uv.y) * 100.0; // rough measure of Y variation
-         if (yRange > xRange * 2.0) {
-           // Vertical element: multiply X by a factor to rebalance aspect ratio
-           chipUv.x *= 4.0;
+         if (abs(uv.x - 0.5) < 0.1) {
+           // Central vertical element: stretch X to rebalance noise aspect ratio
+           chipUv.x = (uv.x - 0.4) * 8.0 + 0.5; // Remap [0.4..0.6] to wider range
          }
          vChipUv = chipUv;`,
       )
