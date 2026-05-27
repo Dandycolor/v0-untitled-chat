@@ -518,6 +518,7 @@ function CreateSimpleDialog({
 }) {
   const presets = useStudio((s) => s.presets)
   const setPresets = useStudio((s) => s.setPresets)
+  const applyPreset = useStudio((s) => s.applyPreset)
 
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
@@ -570,6 +571,14 @@ function CreateSimpleDialog({
 
       await new Promise((r) => setTimeout(r, 100))
       onCreated()
+      
+      // Refresh and apply the new preset
+      const updated = await loadPresets()
+      setPresets(updated)
+      // Apply the newest preset (should be first since ordered DESC by created_at)
+      if (updated.length > 0) {
+        applyPreset(updated[0])
+      }
 
       toast.success("Simple material created")
       setOpen(false)
@@ -794,6 +803,9 @@ function UploadPresetDialog({
   const [uploading, setUploading] = useState(false)
   const [front, setFront] = useState<SideFiles>({})
   const [back, setBack] = useState<SideFiles>({})
+  
+  // Get applyPreset from store so we can apply the new preset after upload
+  const applyPreset = useStudio((s) => s.applyPreset)
 
   const totalCount = Object.keys(front).length + Object.keys(back).length
 
@@ -829,7 +841,14 @@ function UploadPresetDialog({
       toast.success("Preset saved locally")
       setOpen(false)
       reset()
+      
+      // Refresh and apply the new preset
+      const updated = await loadPresets()
       onUploaded()
+      // Apply the newest preset (should be first since ordered DESC by created_at)
+      if (updated.length > 0) {
+        applyPreset(updated[0])
+      }
     } catch (err) {
       console.error("[v0] preset save error:", err)
       toast.error(`Failed to save preset: ${(err as Error).message}`)
