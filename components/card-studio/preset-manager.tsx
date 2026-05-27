@@ -126,6 +126,7 @@ export function PresetManager() {
               Save material
             </Button>
           )}
+          <CreateSimpleDialog onCreated={refresh} snapshotMaterial={snapshotMaterial} />
           <UploadPresetDialog onUploaded={refresh} snapshotMaterial={snapshotMaterial} />
         </div>
       </div>
@@ -475,6 +476,279 @@ function SliderRow({
       <span className="text-[10px] font-mono text-muted-foreground w-10 text-right">
         {value.toFixed(2)}
       </span>
+    </div>
+  )
+}
+
+/**
+ * Create a simple material: front albedo + optional gloss, back color or PBR.
+ */
+function CreateSimpleDialog({
+  onCreated,
+  snapshotMaterial,
+}: {
+  onCreated: () => void
+  snapshotMaterial: () => PresetMaterial
+}) {
+  const presets = useStudio((s) => s.presets)
+  const setPresets = useStudio((s) => s.setPresets)
+
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState("")
+  const [frontAlbedo, setFrontAlbedo] = useState<File | null>(null)
+  const [frontGloss, setFrontGloss] = useState<File | null>(null)
+  const [backMode, setBackMode] = useState<"color" | "pbr">("color")
+  const [backColor, setBackColor] = useState("#ffffff")
+  const [backDesign, setBackDesign] = useState<File | null>(null)
+  const [backPbrFiles, setBackPbrFiles] = useState<SideFiles>({})
+  const [includeMaterial, setIncludeMaterial] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  const handleCreate = async () => {
+    if (!name.trim()) {
+      toast.error("Enter a preset name")
+      return
+    }
+    if (!frontAlbedo) {
+      toast.error("Front design (albedo) is required")
+      return
+    }
+
+    setSaving(true)
+    try {
+      const frontFiles: SideFiles = { albedo: frontAlbedo }
+      if (frontGloss) {
+        frontFiles.metallic = frontGloss
+      }
+
+      const backFiles: SideFiles = {}
+      if (backMode === "color") {
+        // For color mode: store the color as metadata, and optional design PNG
+        if (backDesign) {
+          backFiles.albedo = backDesign
+        }
+      } else {
+        // PBR mode: use uploaded files
+        Object.assign(backFiles, backPbrFiles)
+      }
+
+      await savePreset({
+        id: crypto.randomUUID(),
+        name: name.trim(),
+        frontFiles,
+        backFiles,
+        material: includeMaterial ? snapshotMaterial() : undefined,
+      })
+
+      await new Promise((r) => setTimeout(r, 100))
+      onCreated()
+
+      toast.success("Simple material created")
+      setOpen(false)
+      setName("")
+      setFrontAlbedo(null)
+      setFrontGloss(null)
+      setBackDesign(null)
+      setBackPbrFiles({})
+    } catch (err) {
+      console.error("[v0] create simple error:", err)
+      toast.error("Failed to create material")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" className="h-7 gap-1 bg-transparent">
+          <Plus className="size-3.5" />
+          Simple
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Create Simple Material</DialogTitle>
+          <DialogDescription>
+            Design + optional gloss on front, color or PBR on back.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+          {/* Preset name */}
+          <div className="space-y-2">
+            <Label htmlFor="simple-name" className="text-sm">
+              Preset name
+            </Label>
+            <Input
+              id="simple-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g., Aurora Mountains"
+              className="text-sm"
+            />
+          </div>
+
+          {/* Front side */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Front</Label>
+
+            {/* Albedo (required) */}
+            <div className="rounded-md border bg-muted/30 p-3">
+              <div className="text-xs font-medium text-muted-foreground mb-2">DESIGN (Albedo)</div>
+              <FileInput
+                label="Design image"
+                file={frontAlbedo}
+                onFile={setFrontAlbedo}
+                accept="image/*"
+              />
+            </div>
+
+            {/* Optional gloss */}
+            <div className="rounded-md border bg-muted/30 p-3">
+              <div className="text-xs font-medium text-muted-foreground mb-2">GLOSS (Metallic) - Optional</div>
+              <FileInput
+                label="Gloss/shine mask"
+                file={frontGloss}
+                onFile={setFrontGloss}
+                accept="image/*"
+              />
+            </div>
+          </div>
+
+          {/* Back side mode */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Back</Label>
+
+            <div className="flex gap-2">
+              <label className="flex flex-1 items-center gap-2 rounded-md border px-3 py-2 cursor-pointer hover:bg-muted/50">
+                <input
+                  type="radio"
+                  name="back-mode"
+                  value="color"
+                  checked={backMode === "color"}
+                  onChange={(e) => setBackMode(e.target.value as "color" | "pbr")}
+                  className="size-3.5"
+                />
+                <span className="text-sm font-medium">Simple (Color)</span>
+              </label>
+              <label className="flex flex-1 items-center gap-2 rounded-md border px-3 py-2 cursor-pointer hover:bg-muted/50">
+                <input
+                  type="radio"
+                  name="back-mode"
+                  value="pbr"
+                  checked={backMode === "pbr"}
+                  onChange={(e) => setBackMode(e.target.value as "color" | "pbr")}
+                  className="size-3.5"
+                />
+                <span className="text-sm font-medium">Full PBR</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Back: Color mode */}
+          {backMode === "color" && (
+            <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+              <div className="flex items-center gap-3">
+                <div className="text-xs font-medium text-muted-foreground flex-1">Background Color</div>
+                <input
+                  type="color"
+                  value={backColor}
+                  onChange={(e) => setBackColor(e.target.value)}
+                  className="size-8 rounded cursor-pointer"
+                />
+              </div>
+
+              <div className="pt-2 border-t">
+                <div className="text-xs font-medium text-muted-foreground mb-2">Design (Optional)</div>
+                <FileInput
+                  label="Back design image"
+                  file={backDesign}
+                  onFile={setBackDesign}
+                  accept="image/*"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Back: PBR mode */}
+          {backMode === "pbr" && (
+            <SidePanel
+              label="Back PBR"
+              side="back"
+              files={backPbrFiles}
+              onChange={setBackPbrFiles}
+            />
+          )}
+
+          {/* Material settings */}
+          <label className="flex items-start gap-2 rounded-md border bg-muted/30 p-2.5 text-xs">
+            <input
+              type="checkbox"
+              checked={includeMaterial}
+              onChange={(e) => setIncludeMaterial(e.target.checked)}
+              className="mt-0.5 size-3.5 cursor-pointer accent-primary"
+            />
+            <span className="flex flex-col gap-0.5">
+              <span className="font-medium text-foreground">Include material settings</span>
+              <span className="text-muted-foreground">
+                Save current roughness, glare, and special effects.
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleCreate} disabled={saving}>
+            {saving ? (
+              <>
+                <Loader2 className="mr-1.5 size-4 animate-spin" />
+                Creating…
+              </>
+            ) : (
+              "Create Material"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * Simple file input component.
+ */
+function FileInput({
+  label,
+  file,
+  onFile,
+  accept = "*",
+}: {
+  label: string
+  file: File | null
+  onFile: (f: File | null) => void
+  accept?: string
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div className="flex items-center gap-1.5">
+        {file && <span className="text-xs font-mono text-foreground">{file.name}</span>}
+        <label className="cursor-pointer">
+          <input
+            type="file"
+            accept={accept}
+            onChange={(e) => onFile(e.target.files?.[0] || null)}
+            className="hidden"
+          />
+          <span className="inline-block rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 transition-opacity">
+            {file ? "Change" : "Upload"}
+          </span>
+        </label>
+      </div>
     </div>
   )
 }
