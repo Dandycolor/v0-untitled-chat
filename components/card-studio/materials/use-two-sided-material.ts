@@ -382,28 +382,19 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
           #define CARD_AO_SAMPLE aoSample`,
       )
 
-      // --- Normal map: only apply on the front side. Back-mesh keeps geometry normal.
+      // --- Normal map: only apply on the front side. Back-mesh restores geometry normal
+      // so the front's bump (e.g. window frames) does not bleed through the back albedo.
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <normal_fragment_maps>",
-        `#ifdef USE_NORMALMAP_TANGENTSPACE
-          if (cs_sideBlend() > 0.5) {
-            #include <normal_fragment_maps>
-          }
-        #else
-          #include <normal_fragment_maps>
-        #endif`,
+        `#include <normal_fragment_maps>
+        normal = normalize(mix(nonPerturbedNormal, normal, cs_sideBlend()));`,
       )
 
       // --- Clearcoat normal map: front only.
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <clearcoat_normal_fragment_maps>",
-        `#ifdef USE_CLEARCOAT_NORMALMAP
-          if (cs_sideBlend() > 0.5) {
-            #include <clearcoat_normal_fragment_maps>
-          }
-        #else
-          #include <clearcoat_normal_fragment_maps>
-        #endif`,
+        `#include <clearcoat_normal_fragment_maps>
+        clearcoatNormal = normalize(mix(nonPerturbedNormal, clearcoatNormal, cs_sideBlend()));`,
       )
       shader.fragmentShader = shader.fragmentShader.replaceAll(
         "texture2D( aoMap, vAoMapUv ).r",
