@@ -3,7 +3,8 @@
 import { useEffect } from "react"
 import { fetchTextureBlob } from "@/lib/fetch-texture-blob"
 import { resolveTextureUrl } from "@/lib/texture-url"
-import type { DesignPreset, PbrMapSet } from "@/lib/studio-store"
+import { loadPresets } from "@/lib/preset-storage"
+import type { PbrMapSet } from "@/lib/studio-store"
 
 /**
  * Background preloader for all saved design presets.
@@ -14,10 +15,10 @@ import type { DesignPreset, PbrMapSet } from "@/lib/studio-store"
  *     "first paint" path.
  *  2. Wait for `requestIdleCallback` (or a fallback timeout) so we only start
  *     when the main thread is idle — on tablets this prevents scroll jank.
- *  3. Fetch `/api/presets`, then for every preset iterate over all PBR map
- *     channels and `fetchTextureBlob` each one. That populates the browser
- *     HTTP cache AND our persistent Cache Storage entry, so switching to any
- *     other preset later reads from cache instantly.
+ *  3. Load presets from localStorage/IndexedDB, then for every preset iterate
+ *     over all PBR map channels and `fetchTextureBlob` each one. That populates
+ *     the browser HTTP cache AND our persistent Cache Storage entry, so switching
+ *     to any other preset later reads from cache instantly.
  *
  * This component renders nothing.
  */
@@ -43,9 +44,7 @@ export function PresetPreloader() {
     const run = async () => {
       if (cancelled) return
       try {
-        const r = await fetch("/api/presets", { signal: ac.signal })
-        if (!r.ok) return
-        const { presets } = (await r.json()) as { presets: DesignPreset[] }
+        const presets = await loadPresets()
 
         // Flatten every texture URL across every preset and every side, filter
         // duplicates (albedo/normal can repeat if a preset reuses a map).

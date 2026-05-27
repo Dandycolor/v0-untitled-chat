@@ -103,7 +103,6 @@ function useMaybeTexture(
         // retry with exponential backoff, and abort-signal propagation.
         const blob = await fetchTextureBlob(resolved, ac.signal)
         if (cancelled) return
-        console.log("[v0] got blob for:", resolved, "size:", blob.size, "type:", blob.type)
 
         const objectUrl = URL.createObjectURL(blob)
         const img = new Image()
@@ -128,8 +127,7 @@ function useMaybeTexture(
           setTex(t)
           settle()
         }
-        img.onerror = (e) => {
-          console.log("[v0] texture decode failed:", resolved, e)
+        img.onerror = () => {
           URL.revokeObjectURL(objectUrl)
           if (!cancelled) setTex(fallback)
           settle()
@@ -142,7 +140,6 @@ function useMaybeTexture(
           settle()
           return
         }
-        console.log("[v0] texture fetch failed:", resolved, err)
         if (!cancelled) setTex(fallback)
         settle()
       }

@@ -64,10 +64,8 @@ export async function fetchTextureBlob(
       const hit = await cache.match(url)
       if (hit) {
         const blob = await hit.blob()
-        console.log("[v0] cache hit for:", url, "size:", blob.size, "type:", blob.type)
         // If the cached blob is empty or has wrong type, ignore it
         if (blob.size === 0 || !blob.type.startsWith("image/")) {
-          console.log("[v0] cache returned invalid blob, deleting and fetching fresh")
           try { await cache.delete(url) } catch { /* ignore */ }
         } else {
           return blob
@@ -96,7 +94,6 @@ export async function fetchTextureBlob(
         throw new Error(`HTTP ${res.status} for ${url}`)
       }
       const blob = await res.blob()
-      console.log("[v0] network fetch for:", url, "size:", blob.size, "type:", blob.type)
       // Clone into Cache Storage AFTER we have a valid blob
       if (cache && blob.size > 0 && blob.type.startsWith("image/")) {
         try {
@@ -115,11 +112,6 @@ export async function fetchTextureBlob(
       lastError = err
       const backoff = BACKOFF_MS[attempt]
       if (attempt < MAX_ATTEMPTS - 1) {
-        console.log(
-          `[v0] texture fetch attempt ${attempt + 1} failed, retrying in ${backoff}ms:`,
-          url,
-          err,
-        )
         await sleep(backoff, signal)
       }
     }

@@ -2,8 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Check, Image as ImageIcon, Loader2, Plus, Save, Trash2, Upload, X } from "lucide-react"
-import { upload } from "@vercel/blob/client"
 import { useStudio, MATERIAL_KEYS, type DesignPreset, type PresetMaterial } from "@/lib/studio-store"
+import {
+  loadPresets,
+  savePreset,
+  deletePreset,
+  updatePresetMaterial,
+  generatePresetId,
+} from "@/lib/preset-storage"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -44,11 +50,10 @@ export function PresetManager() {
   const refresh = async () => {
     setLoading(true)
     try {
-      const r = await fetch("/api/presets")
-      if (!r.ok) throw new Error("failed")
-      const { presets } = (await r.json()) as { presets: DesignPreset[] }
-      setPresets(presets)
-    } catch {
+      const loaded = await loadPresets()
+      setPresets(loaded)
+    } catch (err) {
+      console.error("[v0] Failed to load presets:", err)
       toast.error("Failed to load presets")
     } finally {
       setLoading(false)
@@ -61,18 +66,16 @@ export function PresetManager() {
   }, [])
 
   const onDelete = async (id: string) => {
-    const r = await fetch(`/api/presets?id=${encodeURIComponent(id)}`, { method: "DELETE" })
-    if (!r.ok) {
+    try {
+      await deletePreset(id)
+      setPresets(presets.filter((p) => p.id !== id))
+      toast.success("Preset deleted")
+    } catch {
       toast.error("Failed to delete preset")
-      return
     }
-    setPresets(presets.filter((p) => p.id !== id))
-    toast.success("Preset deleted")
   }
 
-  // Snapshots the current material-state slice into a `PresetMaterial`. Reading
-  // the store imperatively avoids subscribing the whole component to every
-  // material-related slider change.
+  // Snapshots the current material-state slice into a `PresetMaterial`.
   const snapshotMaterial = (): PresetMaterial => {
     const s = useStudio.getState()
     const out = {} as PresetMaterial
@@ -82,19 +85,13 @@ export function PresetManager() {
     return out
   }
 
-  // PATCH the active preset with the current material values, then reflect it
-  // locally so the next click on the design re-applies these settings.
+  // Save material settings to the active preset
   const onSaveMaterialToActive = async () => {
     if (!activePresetId) return
     setSavingMaterial(true)
     try {
       const material = snapshotMaterial()
-      const r = await fetch("/api/presets", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: activePresetId, material }),
-      })
-      if (!r.ok) throw new Error(`status ${r.status}`)
+      updatePresetMaterial(activePresetId, material)
       setPresets(
         presets.map((p) => (p.id === activePresetId ? { ...p, material } : p)),
       )
@@ -146,7 +143,7 @@ export function PresetManager() {
               <Upload className="size-5" />
             </EmptyMedia>
             <EmptyTitle>No presets yet</EmptyTitle>
-            <EmptyDescription>Upload a PBR set to store it in Vercel Blob.</EmptyDescription>
+            <EmptyDescription>Upload a PBR texture set to save it locally.</EmptyDescription>
           </EmptyHeader>
         </Empty>
       )}
@@ -220,8 +217,6 @@ function UploadPresetDialog({
     setIncludeMaterial(true)
   }
 
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
-
   const handleSubmit = async () => {
     if (!name.trim()) {
       toast.error("Enter a preset name")
@@ -233,55 +228,25 @@ function UploadPresetDialog({
     }
 
     setUploading(true)
-    setProgress({ done: 0, total: totalCount })
-
-    const id = generateId()
-    const entries: Array<{ side: "front" | "back"; channel: string; file: File }> = []
-    for (const [k, f] of Object.entries(front)) if (f) entries.push({ side: "front", channel: k, file: f })
-    for (const [k, f] of Object.entries(back)) if (f) entries.push({ side: "back", channel: k, file: f })
 
     try {
-      const frontUrls: Record<string, string> = {}
-      const backUrls: Record<string, string> = {}
-      let done = 0
-
-      for (const { side, channel, file } of entries) {
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_")
-        const pathname = `presets/${id}/${side}-${channel}-${safeName}`
-        // Uploads directly from the browser to Blob, bypassing the 4.5 MB serverless body limit.
-        const blob = await upload(pathname, file, {
-          access: "public",
-          handleUploadUrl: "/api/blob-upload-token",
-        })
-        if (side === "front") frontUrls[channel] = blob.url
-        else backUrls[channel] = blob.url
-        done += 1
-        setProgress({ done, total: entries.length })
-      }
-
-      const r = await fetch("/api/presets", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          id,
-          name: name.trim(),
-          front: frontUrls,
-          back: backUrls,
-          material: includeMaterial ? snapshotMaterial() : undefined,
-        }),
+      await savePreset({
+        id: generatePresetId(),
+        name: name.trim(),
+        frontFiles: front as Record<string, File>,
+        backFiles: back as Record<string, File>,
+        material: includeMaterial ? snapshotMaterial() : undefined,
       })
-      if (!r.ok) throw new Error(`meta ${r.status}`)
 
-      toast.success("Preset saved")
+      toast.success("Preset saved locally")
       setOpen(false)
       reset()
       onUploaded()
     } catch (err) {
-      console.error("[v0] preset upload error:", err)
-      toast.error(`Failed to upload preset: ${(err as Error).message}`)
+      console.error("[v0] preset save error:", err)
+      toast.error(`Failed to save preset: ${(err as Error).message}`)
     } finally {
       setUploading(false)
-      setProgress(null)
     }
   }
 
@@ -302,8 +267,8 @@ function UploadPresetDialog({
         <DialogHeader>
           <DialogTitle>Upload PBR preset</DialogTitle>
           <DialogDescription>
-            Upload individual channel maps for the front and back of the card. Any channel can be left
-            empty — the studio falls back to neutral values.
+            Upload individual channel maps for the front and back of the card. Textures are stored
+            locally in your browser (IndexedDB). Any channel can be left empty.
           </DialogDescription>
         </DialogHeader>
 
@@ -326,7 +291,7 @@ function UploadPresetDialog({
 
           <p className="text-xs text-muted-foreground">
             {totalCount > 0
-              ? `${totalCount} file${totalCount === 1 ? "" : "s"} ready to upload.`
+              ? `${totalCount} file${totalCount === 1 ? "" : "s"} ready to save.`
               : "No files selected yet."}
           </p>
 
@@ -355,7 +320,7 @@ function UploadPresetDialog({
             {uploading ? (
               <>
                 <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                {progress ? `Uploading ${progress.done}/${progress.total}…` : "Uploading…"}
+                Saving…
               </>
             ) : (
               "Save preset"
@@ -438,7 +403,6 @@ function ChannelRow({
         onChange={(e) => {
           const f = e.target.files?.[0]
           onFile(f ?? null)
-          // reset native value so picking the same file twice re-triggers onChange
           e.target.value = ""
         }}
       />
@@ -482,12 +446,6 @@ function ChannelRow({
       )}
     </div>
   )
-}
-
-function generateId() {
-  return (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2))
-    .replace(/-/g, "")
-    .slice(0, 12)
 }
 
 function formatSize(bytes: number) {
