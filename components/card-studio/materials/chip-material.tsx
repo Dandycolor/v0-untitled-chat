@@ -58,14 +58,11 @@ export function useChipMaterial(props: Props): THREE.MeshPhysicalMaterial {
       shader.vertexShader = shader.vertexShader.replace(
         "#include <uv_vertex>",
         `#include <uv_vertex>
-         // Detect vertical EMV element in the center: X near 0.5, Y varies full range.
-         // Scale X coordinate up to compress noise vertically and make pattern horizontal.
-         vec2 chipUv = uv;
-         if (abs(uv.x - 0.5) < 0.1) {
-           // Central vertical element: stretch X to rebalance noise aspect ratio
-           chipUv.x = (uv.x - 0.4) * 8.0 + 0.5; // Remap [0.4..0.6] to wider range
-         }
-         vChipUv = chipUv;`,
+         // Use world-space XY for uniform noise pattern across all chip elements.
+         // This ensures the brushed metal pattern is consistent regardless of
+         // UV mapping differences between the vertical EMV contact and side pads.
+         vec4 worldPos = modelMatrix * vec4(position, 1.0);
+         vChipUv = worldPos.xy;`,
       )
 
       shader.fragmentShader = shader.fragmentShader.replace(
