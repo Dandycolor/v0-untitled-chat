@@ -258,6 +258,7 @@ function PresetRow({
 
 /**
  * Material editing sliders for an expanded preset.
+ * Reads current values from studio store, not from the preset itself.
  */
 function MaterialSliders({
   preset,
@@ -268,13 +269,32 @@ function MaterialSliders({
 }) {
   if (!preset.material) return null
 
-  const m = preset.material
+  // Read current values from store, not from preset snapshot
+  const cardRoughness = useStudio((s) => s.cardRoughness)
+  const cardMetalness = useStudio((s) => s.cardMetalness)
+  const cardNormalScale = useStudio((s) => s.cardNormalScale)
+  const cardClearcoat = useStudio((s) => s.cardClearcoat)
+  const cardClearcoatRoughness = useStudio((s) => s.cardClearcoatRoughness)
+  const cardEdgeTint = useStudio((s) => s.cardEdgeTint)
+  const glareMode = useStudio((s) => s.glareMode)
+  const glareIntensity = useStudio((s) => s.glareIntensity)
+  const glareWidth = useStudio((s) => s.glareWidth)
+  const glareSoftness = useStudio((s) => s.glareSoftness)
+  const holoEnabled = useStudio((s) => s.holoEnabled)
+  const holoIntensity = useStudio((s) => s.holoIntensity)
+  const holoScale = useStudio((s) => s.holoScale)
+  const holoHueShift = useStudio((s) => s.holoHueShift)
+  const foilEnabled = useStudio((s) => s.foilEnabled)
+  const foilSheen = useStudio((s) => s.foilSheen)
+  const foilSparkle = useStudio((s) => s.foilSparkle)
+  const foilDensity = useStudio((s) => s.foilDensity)
+  const foilSparkleSize = useStudio((s) => s.foilSparkleSize)
 
   return (
     <div className="space-y-2">
       <SliderRow
         label="Roughness"
-        value={m.cardRoughness}
+        value={cardRoughness}
         min={0}
         max={1}
         step={0.01}
@@ -282,7 +302,7 @@ function MaterialSliders({
       />
       <SliderRow
         label="Metalness"
-        value={m.cardMetalness}
+        value={cardMetalness}
         min={0}
         max={1}
         step={0.01}
@@ -290,7 +310,7 @@ function MaterialSliders({
       />
       <SliderRow
         label="Normal intensity"
-        value={m.cardNormalScale}
+        value={cardNormalScale}
         min={0}
         max={2}
         step={0.01}
@@ -298,7 +318,7 @@ function MaterialSliders({
       />
       <SliderRow
         label="Clearcoat"
-        value={m.cardClearcoat}
+        value={cardClearcoat}
         min={0}
         max={1}
         step={0.01}
@@ -306,7 +326,7 @@ function MaterialSliders({
       />
       <SliderRow
         label="Clearcoat roughness"
-        value={m.cardClearcoatRoughness}
+        value={cardClearcoatRoughness}
         min={0}
         max={1}
         step={0.01}
@@ -314,7 +334,7 @@ function MaterialSliders({
       />
       <SliderRow
         label="Edge tint"
-        value={m.cardEdgeTint}
+        value={cardEdgeTint}
         min={0}
         max={1}
         step={0.01}
@@ -322,11 +342,11 @@ function MaterialSliders({
       />
 
       {/* Glare */}
-      {m.glareMode !== "none" && (
+      {glareMode !== "none" && (
         <>
           <SliderRow
             label="Glare intensity"
-            value={m.glareIntensity}
+            value={glareIntensity}
             min={0}
             max={1}
             step={0.01}
@@ -334,7 +354,7 @@ function MaterialSliders({
           />
           <SliderRow
             label="Glare width"
-            value={m.glareWidth}
+            value={glareWidth}
             min={0.1}
             max={3}
             step={0.1}
@@ -342,7 +362,7 @@ function MaterialSliders({
           />
           <SliderRow
             label="Glare softness"
-            value={m.glareSoftness}
+            value={glareSoftness}
             min={0}
             max={1}
             step={0.01}
@@ -352,11 +372,11 @@ function MaterialSliders({
       )}
 
       {/* Holographic */}
-      {m.holoEnabled && (
+      {holoEnabled && (
         <>
           <SliderRow
             label="Holo intensity"
-            value={m.holoIntensity}
+            value={holoIntensity}
             min={0}
             max={1}
             step={0.01}
@@ -364,7 +384,7 @@ function MaterialSliders({
           />
           <SliderRow
             label="Holo scale"
-            value={m.holoScale}
+            value={holoScale}
             min={0.5}
             max={5}
             step={0.1}
@@ -372,7 +392,7 @@ function MaterialSliders({
           />
           <SliderRow
             label="Holo hue shift"
-            value={m.holoHueShift}
+            value={holoHueShift}
             min={0}
             max={1}
             step={0.01}
@@ -382,11 +402,11 @@ function MaterialSliders({
       )}
 
       {/* Foil */}
-      {m.foilEnabled && (
+      {foilEnabled && (
         <>
           <SliderRow
             label="Foil sheen"
-            value={m.foilSheen}
+            value={foilSheen}
             min={0}
             max={2}
             step={0.01}
@@ -394,7 +414,7 @@ function MaterialSliders({
           />
           <SliderRow
             label="Foil sparkle"
-            value={m.foilSparkle}
+            value={foilSparkle}
             min={0}
             max={1}
             step={0.01}
@@ -402,7 +422,7 @@ function MaterialSliders({
           />
           <SliderRow
             label="Foil density"
-            value={m.foilDensity}
+            value={foilDensity}
             min={0}
             max={1}
             step={0.01}
@@ -410,7 +430,7 @@ function MaterialSliders({
           />
           <SliderRow
             label="Foil sparkle size"
-            value={m.foilSparkleSize}
+            value={foilSparkleSize}
             min={0.5}
             max={3}
             step={0.1}
