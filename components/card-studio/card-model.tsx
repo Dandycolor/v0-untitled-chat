@@ -6,10 +6,8 @@ import { useGLTF } from "@react-three/drei"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { useStudio, type CardModelId } from "@/lib/studio-store"
 import { useTwoSidedPhysicalMaterial } from "./materials/use-two-sided-material"
-import { useSimpleFillMaterial } from "./materials/use-simple-fill-material"
 import { useChipMaterial } from "./materials/chip-material"
 import { useLogoTexture } from "./logo-decal"
-import { makeFillTexture } from "@/lib/fill-texture"
 
 const MODEL_URLS: Record<CardModelId, string> = {
   card_no_chip: "/models/card_no_chip.glb",
@@ -18,7 +16,6 @@ const MODEL_URLS: Record<CardModelId, string> = {
   card_chip3: "/models/card_chip3.glb",
 }
 
-// Preload all four models so switching is instant
 Object.values(MODEL_URLS).forEach((u) => useGLTF.preload(u))
 
 type AnalyzedMesh = {
@@ -29,11 +26,6 @@ type AnalyzedMesh = {
   role: "body" | "chip" | "other"
 }
 
-/**
- * Generates a planar UV projection for a mesh based on its bounding box.
- * Maps the two "long" axes (everything except `sideAxis`) to [0, 1] UV space.
- * Also writes uv1 so aoMap/lightMap work even when the GLB lacks a second UV set.
- */
 function ensurePlanarUv(mesh: THREE.Mesh, sideAxis: 0 | 1 | 2) {
   const geo = mesh.geometry
   geo.computeBoundingBox()
@@ -43,10 +35,6 @@ function ensurePlanarUv(mesh: THREE.Mesh, sideAxis: 0 | 1 | 2) {
   const axes = [0, 1, 2].filter((i) => i !== sideAxis) as [number, number]
   const pos = geo.attributes.position
   if (!pos) return
-
-  // Always overwrite any UVs shipped inside the GLB — we want a predictable planar projection
-  // mapped to [0,1] along the card's two long axes. Orientation of uploaded designs is then
-  // adjusted per-texture via `texture.repeat` (flipH / flipV controls in the UI).
   const u = new Float32Array(pos.count * 2)
   for (let i = 0; i < pos.count; i++) {
     const a0 =
@@ -66,8 +54,6 @@ function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAx
     if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh)
   })
 
-  // Use root-local coordinates (pre-root-scale) so the bbox is deterministic across rerenders.
-  // We bake each mesh's local matrix relative to the GLTF root, but skip the root's own transform.
   const entries: AnalyzedMesh[] = meshes.map((m) => {
     m.geometry.computeBoundingBox()
     const bbox = m.geometry.boundingBox!.clone()
@@ -85,18 +71,15 @@ function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAx
 
   if (entries.length === 0) return { analyzed: [], sideAxis: 2 }
 
-  // Body = largest mesh
   const body = entries.reduce((best, cur) => (cur.volume > best.volume ? cur : best), entries[0])
   body.role = "body"
 
-  // Determine thickness axis (shortest side of body bbox)
   const s = body.size
   let sideAxis: 0 | 1 | 2 = 2
   if (s.x <= s.y && s.x <= s.z) sideAxis = 0
   else if (s.y <= s.x && s.y <= s.z) sideAxis = 1
   else sideAxis = 2
 
-  // Anything that sits within the body's XY/XZ footprint and is smaller is a chip.
   for (const e of entries) {
     if (e === body) continue
     const smallerVolume = e.volume < body.volume * 0.2
@@ -104,7 +87,6 @@ function analyzeMeshes(root: THREE.Object3D): { analyzed: AnalyzedMesh[]; sideAx
     if (smallerVolume && withinFootprint) e.role = "chip"
   }
 
-  // Ensure the body mesh has planar UVs so PBR textures map correctly.
   ensurePlanarUv(body.mesh, sideAxis)
 
   return { analyzed: entries, sideAxis }
@@ -115,8 +97,9 @@ export function CardModel() {
   const orientation = useStudio((s) => s.orientation)
   const frontPbr = useStudio((s) => s.frontPbr)
   const backPbr = useStudio((s) => s.backPbr)
-  const frontFill = useStudio((s) => s.frontFill)
-  const backFill = useStudio((s) => s.backFill)
+  const backColor = useStudio((s) => s.backColor)
+  const backTemplate = useStudio((s) => s.backTemplate)
+  const activePresetType = useStudio((s) => s.activePresetType)
   const textureFlipH = useStudio((s) => s.textureFlipH)
   const textureFlipV = useStudio((s) => s.textureFlipV)
   const cardRoughness = useStudio((s) => s.cardRoughness)
@@ -144,8 +127,6 @@ export function CardModel() {
     ;(loader as unknown as GLTFLoader).setCrossOrigin("anonymous")
   })
 
-  // Analyze once per model + compute normalization so any GLB unit system (mm, cm, m)
-  // ends up with the card ~1.6 units wide, centered at origin.
   const { analyzed, sideAxis, bodyMesh, bodyBBox, bodyCenter, normScale, normOffset } = useMemo(() => {
     gltf.scene.updateMatrixWorld(true)
     const { analyzed, sideAxis } = analyzeMeshes(gltf.scene)
@@ -168,30 +149,12 @@ export function CardModel() {
     }
   }, [gltf.scene])
 
-  // Build CanvasTextures for the user-controlled solid / gradient fill. Memo
-  // keyed on the primitive fields so dragging an unrelated slider does not
-  // re-allocate a GPU texture. When `type === "none"` the helper returns null
-  // and the material falls back to the preset PBR albedo.
-  const frontFillTex = useMemo(
-    () => makeFillTexture(frontFill),
-    [frontFill.type, frontFill.color1, frontFill.color2, frontFill.angle],
-  )
-  const backFillTex = useMemo(
-    () => makeFillTexture(backFill),
-    [backFill.type, backFill.color1, backFill.color2, backFill.angle],
-  )
-  // Dispose the previous CanvasTexture when the memo rebuilds, otherwise each
-  // color change would leak a 1024×640 texture into GPU memory.
-  useEffect(() => () => { frontFillTex?.dispose() }, [frontFillTex])
-  useEffect(() => () => { backFillTex?.dispose() }, [backFillTex])
-
-  // Determine if we're in "simple fill mode" — both sides using solid/gradient
-  const isSimpleMode = frontFill.type !== "none" && backFill.type !== "none"
-
-  // PBR material (used when at least one side shows a design)
-  const pbrMaterial = useTwoSidedPhysicalMaterial({
+  const cardMaterial = useTwoSidedPhysicalMaterial({
+    presetType: activePresetType,
     front: frontPbr,
     back: backPbr,
+    backColor,
+    backTemplate,
     roughness: cardRoughness,
     metalness: cardMetalness,
     normalScale: cardNormalScale,
@@ -202,17 +165,7 @@ export function CardModel() {
     flipV: textureFlipV,
     edgeColor: cardEdgeColor,
     edgeTint: cardEdgeTint,
-    frontAlbedoOverride: frontFillTex,
-    backAlbedoOverride: backFillTex,
-    frontFlat: frontFill.type !== "none",
-    backFlat: backFill.type !== "none",
   })
-
-  // Simple fill material (used when both sides are solid/gradient)
-  const simpleMaterial = useSimpleFillMaterial(frontFill, backFill, sideAxis)
-
-  // Pick the right material based on mode
-  const cardMaterial = isSimpleMode ? simpleMaterial : pbrMaterial
 
   const chipMaterial = useChipMaterial({
     color: chipColor,
@@ -223,7 +176,6 @@ export function CardModel() {
     noiseScale: chipNoiseScale,
   })
 
-  // Assign materials to correct meshes
   useMemo(() => {
     analyzed.forEach(({ mesh, role }) => {
       if (role === "body") mesh.material = cardMaterial
@@ -231,10 +183,8 @@ export function CardModel() {
     })
   }, [analyzed, cardMaterial, chipMaterial])
 
-  // Logo decal
   const logoTexture = useLogoTexture()
 
-  // Logo plane placement — thin quad parallel to card front face, slightly offset outward.
   const logoPlane = useMemo(() => {
     if (!bodyMesh || !bodyBBox) return null
     const size = new THREE.Vector3()
@@ -244,9 +194,7 @@ export function CardModel() {
     const planeH = size.getComponent(axes[1])
     const thickness = size.getComponent(sideAxis)
 
-    // Natural logo width = 60% of card width at scale=1. At scale≈1.6 it covers the card edge-to-edge.
     const logoW = planeW * 0.6 * logoScale
-    // Preserve logo aspect via texture
     const logoAspect = logoTexture
       ? (logoTexture.image?.width ?? 1) / (logoTexture.image?.height ?? 1)
       : 1.5
@@ -257,7 +205,6 @@ export function CardModel() {
     pos.setComponent(axes[1], bodyCenter.getComponent(axes[1]) + (planeH / 2 - logoH / 2) * logoOffsetY)
     pos.setComponent(sideAxis, bodyBBox.max.getComponent(sideAxis) + thickness * 0.01)
 
-    // Rotation: default plane normal is +Z; we need +sideAxis.
     const rot = new THREE.Euler()
     if (sideAxis === 0) rot.set(0, Math.PI / 2, 0)
     else if (sideAxis === 1) rot.set(-Math.PI / 2, 0, 0)

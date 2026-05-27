@@ -21,6 +21,7 @@ export type DbPreset = {
   front_ao: string | null
   front_height: string | null
   front_orm: string | null
+  front_clearcoat_mask: string | null
   back_albedo: string | null
   back_normal: string | null
   back_roughness: string | null
@@ -28,7 +29,9 @@ export type DbPreset = {
   back_ao: string | null
   back_height: string | null
   back_orm: string | null
+  back_clearcoat_mask: string | null
   back_color: string | null
+  back_template: string | null
   material: Record<string, unknown> | null
   created_at: string
   updated_at: string
@@ -83,6 +86,7 @@ export async function POST(request: NextRequest) {
       front_ao: body.front?.ao || null,
       front_height: body.front?.height || null,
       front_orm: body.front?.orm || null,
+      front_clearcoat_mask: body.front?.clearcoatMask || null,
       back_albedo: body.back?.albedo || null,
       back_normal: body.back?.normal || null,
       back_roughness: body.back?.roughness || null,
@@ -90,7 +94,9 @@ export async function POST(request: NextRequest) {
       back_ao: body.back?.ao || null,
       back_height: body.back?.height || null,
       back_orm: body.back?.orm || null,
+      back_clearcoat_mask: body.back?.clearcoatMask || null,
       back_color: body.backColor || null,
+      back_template: body.backTemplate || null,
       material: body.material || null,
     }
 
@@ -127,6 +133,7 @@ export async function PATCH(request: NextRequest) {
     if (body.name !== undefined) updateData.name = body.name
     if (body.type !== undefined) updateData.type = body.type
     if (body.backColor !== undefined) updateData.back_color = body.backColor
+    if (body.backTemplate !== undefined) updateData.back_template = body.backTemplate
     if (body.material !== undefined) updateData.material = body.material
     
     // Handle front texture updates
@@ -138,6 +145,7 @@ export async function PATCH(request: NextRequest) {
       if (body.front.ao !== undefined) updateData.front_ao = body.front.ao
       if (body.front.height !== undefined) updateData.front_height = body.front.height
       if (body.front.orm !== undefined) updateData.front_orm = body.front.orm
+      if (body.front.clearcoatMask !== undefined) updateData.front_clearcoat_mask = body.front.clearcoatMask
     }
     
     // Handle back texture updates
@@ -149,6 +157,7 @@ export async function PATCH(request: NextRequest) {
       if (body.back.ao !== undefined) updateData.back_ao = body.back.ao
       if (body.back.height !== undefined) updateData.back_height = body.back.height
       if (body.back.orm !== undefined) updateData.back_orm = body.back.orm
+      if (body.back.clearcoatMask !== undefined) updateData.back_clearcoat_mask = body.back.clearcoatMask
     }
 
     const { data, error } = await supabase
@@ -225,6 +234,7 @@ function dbToClientPreset(db: DbPreset) {
       ao: db.front_ao,
       height: db.front_height,
       orm: db.front_orm,
+      clearcoatMask: db.front_clearcoat_mask,
     },
     back: {
       albedo: db.back_albedo,
@@ -234,8 +244,10 @@ function dbToClientPreset(db: DbPreset) {
       ao: db.back_ao,
       height: db.back_height,
       orm: db.back_orm,
+      clearcoatMask: db.back_clearcoat_mask,
     },
     backColor: db.back_color,
+    backTemplate: db.back_template,
     material: db.material,
     createdAt: new Date(db.created_at).getTime(),
   }

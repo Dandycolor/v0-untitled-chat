@@ -11,9 +11,8 @@ import {
   Cpu,
   Rainbow,
   Star,
-  Paintbrush,
 } from "lucide-react"
-import { useStudio, type CardModelId, type FillConfig, type HdrPreset, type ViewId } from "@/lib/studio-store"
+import { useStudio, type CardModelId, type HdrPreset, type ViewId } from "@/lib/studio-store"
 import { cn } from "@/lib/utils"
 import { VIEWS } from "./camera-rig"
 import { Slider } from "@/components/ui/slider"
@@ -98,115 +97,6 @@ function SectionTrigger({
 }
 
 /**
- * Per-side solid / gradient fill editor. Renders a type toggle and — depending
- * on which type is active — a single color picker (solid), two pickers plus
- * an angle slider (gradient), or nothing (none → PBR design shows through).
- */
-function FillSection({
-  label,
-  value,
-  onChange,
-}: {
-  label: string
-  value: FillConfig
-  onChange: (patch: Partial<FillConfig>) => void
-}) {
-  return (
-    <div className="space-y-3">
-      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</p>
-      <ToggleGroup
-        type="single"
-        value={value.type}
-        onValueChange={(v) => v && onChange({ type: v as FillConfig["type"] })}
-        className="w-full"
-      >
-        <ToggleGroupItem value="none" className="flex-1 text-xs">
-          None
-        </ToggleGroupItem>
-        <ToggleGroupItem value="solid" className="flex-1 text-xs">
-          Solid
-        </ToggleGroupItem>
-        <ToggleGroupItem value="gradient" className="flex-1 text-xs">
-          Gradient
-        </ToggleGroupItem>
-      </ToggleGroup>
-
-      {value.type === "solid" && (
-        <Row label="Color">
-          <div className="flex items-center gap-2">
-            <Input
-              type="color"
-              value={value.color1}
-              onChange={(e) => onChange({ color1: e.target.value })}
-              className="h-8 w-14 cursor-pointer p-1"
-              aria-label={`${label} color`}
-            />
-            <Input
-              value={value.color1}
-              onChange={(e) => onChange({ color1: e.target.value })}
-              className="h-8 flex-1 font-mono text-xs"
-            />
-          </div>
-        </Row>
-      )}
-
-      {value.type === "gradient" && (
-        <>
-          <Row label="Color 1">
-            <div className="flex items-center gap-2">
-              <Input
-                type="color"
-                value={value.color1}
-                onChange={(e) => onChange({ color1: e.target.value })}
-                className="h-8 w-14 cursor-pointer p-1"
-                aria-label={`${label} color 1`}
-              />
-              <Input
-                value={value.color1}
-                onChange={(e) => onChange({ color1: e.target.value })}
-                className="h-8 flex-1 font-mono text-xs"
-              />
-            </div>
-          </Row>
-          <Row label="Color 2">
-            <div className="flex items-center gap-2">
-              <Input
-                type="color"
-                value={value.color2}
-                onChange={(e) => onChange({ color2: e.target.value })}
-                className="h-8 w-14 cursor-pointer p-1"
-                aria-label={`${label} color 2`}
-              />
-              <Input
-                value={value.color2}
-                onChange={(e) => onChange({ color2: e.target.value })}
-                className="h-8 flex-1 font-mono text-xs"
-              />
-            </div>
-          </Row>
-          <NumSlider
-            label="Angle"
-            value={value.angle}
-            min={0}
-            max={360}
-            step={1}
-            onChange={(v) => onChange({ angle: v })}
-            format={(v) => `${v.toFixed(0)}°`}
-          />
-          <div
-            aria-hidden
-            className="h-8 w-full rounded-md border"
-            style={{
-              background: `linear-gradient(${value.angle}deg, ${value.color1}, ${value.color2})`,
-            }}
-          />
-        </>
-      )}
-    </div>
-  )
-}
-
-/**
  * Shared header rendered at the top of both desktop sidebar and mobile drawer.
  */
 export function PanelHeader({ onCapture }: { onCapture: () => void }) {
@@ -238,7 +128,7 @@ export function PanelBody({ className, onCapture }: { className?: string; onCapt
     <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", className)}>
       <Accordion
         type="multiple"
-          defaultValue={["model", "fill", "card", "glare", "holo", "foil", "chip", "logo", "env", "capture"]}
+          defaultValue={["model", "card", "glare", "holo", "foil", "chip", "logo", "env", "capture"]}
         className="px-0"
       >
           <AccordionItem value="model" className="border-b">
@@ -342,18 +232,6 @@ export function PanelBody({ className, onCapture }: { className?: string; onCapt
                 <Label className="text-xs text-muted-foreground">Auto-rotate</Label>
                 <Switch checked={s.autoRotate} onCheckedChange={(v) => s.set("autoRotate", v)} />
               </div>
-            </AccordionContent>
-          </AccordionItem>
-
-          <AccordionItem value="fill" className="border-b">
-            <SectionTrigger icon={<Paintbrush className="size-3.5" />} title="Solid fill" />
-            <AccordionContent className="space-y-5 px-4 pb-4">
-              <p className="text-xs text-muted-foreground">
-                Paint the card with a flat color or gradient. PBR textures are ignored — just pure color fill.
-              </p>
-              <FillSection label="Front" value={s.frontFill} onChange={s.setFrontFill} />
-              <Separator />
-              <FillSection label="Back" value={s.backFill} onChange={s.setBackFill} />
             </AccordionContent>
           </AccordionItem>
 

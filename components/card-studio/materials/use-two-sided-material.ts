@@ -5,44 +5,35 @@ import * as THREE from "three"
 import { resolveTextureUrl } from "@/lib/texture-url"
 import { fetchTextureBlob } from "@/lib/fetch-texture-blob"
 import { useTextureLoading } from "@/lib/texture-loading"
+import { makeBackCompositeTexture } from "@/lib/back-composite"
 import type { PbrMapSet } from "@/lib/studio-store"
 
 type Params = {
+  /** "simple" = albedo + optional clearcoatMask (no normal/rough/metal/ao); "pbr" = full set */
+  presetType: "simple" | "pbr"
   front: PbrMapSet
   back: PbrMapSet
+  /** Solid background color for the back side (composited under backTemplate). */
+  backColor: string
+  /** Optional PNG overlay on the back side. */
+  backTemplate?: string
   roughness: number
   metalness: number
   normalScale: number
   clearcoat: number
   clearcoatRoughness: number
-  /** 0=X, 1=Y, 2=Z — object-local axis that points from back side to front side. */
+  /** 0=X, 1=Y, 2=Z — object-local axis from back to front face. */
   sideAxis: 0 | 1 | 2
-  /** Mirror all textures horizontally (applies to both sides). */
   flipH: boolean
-  /** Mirror all textures vertically (applies to both sides). */
   flipV: boolean
-  /** Hex color used to tint the thin side bevel of the card. */
   edgeColor: string
-  /** 0..1 — mixes `edgeColor` into the card's diffuse near perpendicular faces. */
   edgeTint: number
-  /**
-   * Optional per-side albedo override. When provided, replaces the sampled
-   * PBR diffuse for that face entirely (solid color / gradient paint).
-   * Pass `null` / `undefined` to fall back to the preset's albedo texture.
-   */
-  frontAlbedoOverride?: THREE.Texture | null
-  backAlbedoOverride?: THREE.Texture | null
-  /**
-   * When true, the front face renders as a flat color/gradient — no PBR
-   * (roughness, metalness, AO, normal) processing, just the albedo texture.
-   */
-  frontFlat?: boolean
-  backFlat?: boolean
-  }
+}
 
-// Module-level 1x1 neutral textures. Created lazily once the client is running.
+// 1x1 fallback textures
 let NEUTRAL_WHITE: THREE.Texture | null = null
 let NEUTRAL_NORMAL: THREE.Texture | null = null
+let NEUTRAL_BLACK: THREE.Texture | null = null
 function neutralWhite(): THREE.Texture {
   if (NEUTRAL_WHITE) return NEUTRAL_WHITE
   const data = new Uint8Array([255, 255, 255, 255])
@@ -52,9 +43,17 @@ function neutralWhite(): THREE.Texture {
   NEUTRAL_WHITE = t
   return t
 }
+function neutralBlack(): THREE.Texture {
+  if (NEUTRAL_BLACK) return NEUTRAL_BLACK
+  const data = new Uint8Array([0, 0, 0, 255])
+  const t = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat)
+  t.needsUpdate = true
+  t.colorSpace = THREE.NoColorSpace
+  NEUTRAL_BLACK = t
+  return t
+}
 function neutralNormal(): THREE.Texture {
   if (NEUTRAL_NORMAL) return NEUTRAL_NORMAL
-  // Tangent-space neutral normal: (0.5, 0.5, 1.0)
   const data = new Uint8Array([128, 128, 255, 255])
   const t = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat)
   t.needsUpdate = true
@@ -64,9 +63,8 @@ function neutralNormal(): THREE.Texture {
 }
 
 /**
- * Loads a texture without Suspense. If the URL is absent or the image fails to load
- * (e.g. CORS, 404), returns a neutral fallback so the rest of the scene keeps rendering
- * and user interactions (sliders, camera) remain responsive.
+ * Loads a texture by URL through our cached/proxied fetch path. Returns a
+ * neutral fallback while loading or on error.
  */
 function useMaybeTexture(
   url: string | undefined,
@@ -84,11 +82,6 @@ function useMaybeTexture(
     }
     let cancelled = false
     const ac = new AbortController()
-
-    // Notify the global loading counter so the overlay can show progress.
-    // `start` bumps both `pending` and `total`; `note` only decrements
-    // `pending`, so the overlay can show "5 / 8 loaded" without collapsing
-    // to 0/0 immediately when something finishes.
     useTextureLoading.getState().start()
     let settled = false
     const settle = () => {
@@ -99,15 +92,10 @@ function useMaybeTexture(
 
     ;(async () => {
       try {
-        // fetchTextureBlob owns: persistent Cache Storage lookup, 3-attempt
-        // retry with exponential backoff, and abort-signal propagation.
         const blob = await fetchTextureBlob(resolved, ac.signal)
         if (cancelled) return
-
         const objectUrl = URL.createObjectURL(blob)
         const img = new Image()
-        // No crossOrigin attribute — the URL is blob: so it's same-origin
-        // and WebGL reads are never tainted (keeps screenshot capture working).
         img.decoding = "async"
         img.onload = () => {
           if (cancelled) {
@@ -121,8 +109,6 @@ function useMaybeTexture(
           t.wrapT = THREE.ClampToEdgeWrapping
           t.anisotropy = 8
           t.needsUpdate = true
-          // Revoke the object URL after the next tick — Three has already
-          // read the image data into the GPU by then.
           setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
           setTex(t)
           settle()
@@ -135,8 +121,6 @@ function useMaybeTexture(
         img.src = objectUrl
       } catch (err) {
         if ((err as Error)?.name === "AbortError") {
-          // Cancelled via effect cleanup — not a real failure, but we still
-          // need to drop the pending counter so the overlay doesn't get stuck.
           settle()
           return
         }
@@ -148,8 +132,6 @@ function useMaybeTexture(
     return () => {
       cancelled = true
       ac.abort()
-      // Defensive: if the async chain never reached a settle path before the
-      // component unmounted, make sure we don't leak a pending counter.
       settle()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -159,13 +141,21 @@ function useMaybeTexture(
 }
 
 /**
- * Builds a MeshPhysicalMaterial that samples two PBR map sets and blends between them
- * based on object-local normal direction (positive side → front set, negative → back set).
+ * Builds a MeshPhysicalMaterial that samples two PBR map sets and blends
+ * between them based on object-local normal direction.
+ *
+ * - For "pbr" presets: front uses the full PBR set; back uses its own PBR set
+ *   (or falls back to the back composite texture if no back albedo provided).
+ * - For "simple" presets: front uses albedo + optional clearcoatMask only;
+ *   back uses the composite (backColor + optional backTemplate).
  */
 export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalMaterial {
   const {
+    presetType,
     front,
     back,
+    backColor,
+    backTemplate,
     roughness,
     metalness,
     normalScale,
@@ -176,35 +166,49 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     flipV,
     edgeColor,
     edgeTint,
-    frontAlbedoOverride,
-    backAlbedoOverride,
-    frontFlat,
-    backFlat,
   } = params
 
-  const frontAlbedo = useMaybeTexture(front.albedo, THREE.SRGBColorSpace)
-  const backAlbedo = useMaybeTexture(back.albedo, THREE.SRGBColorSpace)
-  const frontNormal = useMaybeTexture(front.normal, THREE.NoColorSpace, true)
-  const backNormal = useMaybeTexture(back.normal, THREE.NoColorSpace, true)
-  const frontRough = useMaybeTexture(front.roughness ?? front.orm, THREE.NoColorSpace)
-  const backRough = useMaybeTexture(back.roughness ?? back.orm, THREE.NoColorSpace)
-  const frontMetal = useMaybeTexture(front.metallic ?? front.orm, THREE.NoColorSpace)
-  const backMetal = useMaybeTexture(back.metallic ?? back.orm, THREE.NoColorSpace)
-  const frontAo = useMaybeTexture(front.ao ?? front.orm, THREE.NoColorSpace)
-  const backAo = useMaybeTexture(back.ao ?? back.orm, THREE.NoColorSpace)
+  const isSimple = presetType === "simple"
 
-  // Live handles to the shader uniforms for edge color + tint, populated inside
-  // onBeforeCompile and updated from a separate useEffect to avoid recompiling the
-  // shader every time the user drags the slider or picks a new color.
+  // Front textures
+  const frontAlbedo = useMaybeTexture(front.albedo, THREE.SRGBColorSpace)
+  const frontNormal = useMaybeTexture(isSimple ? undefined : front.normal, THREE.NoColorSpace, true)
+  const frontRough = useMaybeTexture(isSimple ? undefined : (front.roughness ?? front.orm), THREE.NoColorSpace)
+  const frontMetal = useMaybeTexture(isSimple ? undefined : (front.metallic ?? front.orm), THREE.NoColorSpace)
+  const frontAo = useMaybeTexture(isSimple ? undefined : (front.ao ?? front.orm), THREE.NoColorSpace)
+  // Simple-only: clearcoat mask
+  const frontClearMask = useMaybeTexture(isSimple ? front.clearcoatMask : undefined, THREE.NoColorSpace)
+
+  // Back textures - if PBR mode and back has its own albedo, use PBR. Otherwise use composite.
+  const useBackPbr = !isSimple && !!back.albedo
+  const backPbrAlbedo = useMaybeTexture(useBackPbr ? back.albedo : undefined, THREE.SRGBColorSpace)
+  const backNormal = useMaybeTexture(useBackPbr ? back.normal : undefined, THREE.NoColorSpace, true)
+  const backRough = useMaybeTexture(useBackPbr ? (back.roughness ?? back.orm) : undefined, THREE.NoColorSpace)
+  const backMetal = useMaybeTexture(useBackPbr ? (back.metallic ?? back.orm) : undefined, THREE.NoColorSpace)
+  const backAo = useMaybeTexture(useBackPbr ? (back.ao ?? back.orm) : undefined, THREE.NoColorSpace)
+
+  // Back composite (color + template) — used when not in PBR back mode.
+  const backComposite = useMemo(() => {
+    if (useBackPbr) return null
+    return makeBackCompositeTexture(backColor, backTemplate, flipH, flipV)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useBackPbr, backColor, backTemplate, flipH, flipV])
+
+  useEffect(() => {
+    return () => {
+      backComposite?.dispose()
+    }
+  }, [backComposite])
+
+  // Effective back albedo: PBR back albedo if present, else the composite.
+  const effectiveBackAlbedo = useBackPbr ? backPbrAlbedo.tex : (backComposite?.texture ?? neutralBlack())
+
+  // Refs to live-updatable shader uniforms.
   const edgeUniformsRef = useRef<{
     color: { value: THREE.Color }
     tint: { value: number }
   } | null>(null)
 
-  // Same trick for front/back albedo: onBeforeCompile picks an initial texture
-  // (override if present, preset otherwise) and exposes the uniform handles so a
-  // downstream effect can hot-swap in the new CanvasTexture whenever the user
-  // toggles solid / gradient fill without tearing down the whole material.
   const albedoUniformsRef = useRef<{
     front: { value: THREE.Texture }
     back: { value: THREE.Texture }
@@ -213,50 +217,43 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
   const material = useMemo(() => {
     const mat = new THREE.MeshPhysicalMaterial({})
 
-    // Base maps — use front set as the "primary" so Three enables all chunks.
+    // Base maps — needed so Three enables the corresponding shader chunks.
     mat.map = frontAlbedo.tex
-    mat.normalMap = frontNormal.tex
-    mat.roughnessMap = frontRough.tex
-    mat.metalnessMap = frontMetal.tex
-    mat.aoMap = frontAo.tex
-    mat.normalScale = new THREE.Vector2(1, 1)
-
-    // IMPORTANT: MeshPhysicalMaterial's clearcoat layer uses its OWN normal and
-    // roughness maps. If we don't assign them, the clearcoat highlight forms on
-    // an idealized flat plane, which blows out into a flat mirror blob that
-    // ignores the texture grain and normal detail underneath. Feeding the same
-    // maps into clearcoatNormalMap / clearcoatRoughnessMap makes the PBR glare
-    // follow wood grain, embossing, and roughness variation — i.e. "the PBR
-    // highlight reacts to the material shader".
-    mat.clearcoatNormalMap = frontNormal.tex
-    mat.clearcoatRoughnessMap = frontRough.tex
-    mat.clearcoatNormalScale = new THREE.Vector2(1, 1)
-
-    // We intentionally do NOT set `customProgramCacheKey` to a constant here:
-    // doing so made Three reuse the very first compiled WebGL program across every
-    // subsequent material instance. Custom uniforms like `uFrontAlbedo` live on the
-    // material's own uniforms object, but in production (no StrictMode, no HMR) the
-    // first material's textures stayed bound to the shared program long after the user
-    // picked a different design — which manifested as "uploaded designs don't switch".
-    // Letting Three hash the modified shader source is cheap and correct.
+    if (!isSimple) {
+      mat.normalMap = frontNormal.tex
+      mat.roughnessMap = frontRough.tex
+      mat.metalnessMap = frontMetal.tex
+      mat.aoMap = frontAo.tex
+      mat.normalScale = new THREE.Vector2(1, 1)
+      mat.clearcoatNormalMap = frontNormal.tex
+      mat.clearcoatRoughnessMap = frontRough.tex
+      mat.clearcoatNormalScale = new THREE.Vector2(1, 1)
+    } else {
+      // Simple mode: clearcoat mask determines per-pixel gloss strength.
+      // White areas of the mask → full clearcoat; black → matte.
+      mat.clearcoatMap = frontClearMask.tex
+    }
 
     mat.onBeforeCompile = (shader) => {
-      const frontAlbedoUniform = { value: frontAlbedoOverride ?? frontAlbedo.tex }
-      const backAlbedoUniform = { value: backAlbedoOverride ?? backAlbedo.tex }
+      const frontAlbedoUniform = { value: frontAlbedo.tex }
+      const backAlbedoUniform = { value: effectiveBackAlbedo }
       shader.uniforms.uFrontAlbedo = frontAlbedoUniform
       shader.uniforms.uBackAlbedo = backAlbedoUniform
       albedoUniformsRef.current = { front: frontAlbedoUniform, back: backAlbedoUniform }
-      shader.uniforms.uFrontRough = { value: frontRough.tex }
-      shader.uniforms.uBackRough = { value: backRough.tex }
-      shader.uniforms.uFrontMetal = { value: frontMetal.tex }
-      shader.uniforms.uBackMetal = { value: backMetal.tex }
-      shader.uniforms.uFrontAo = { value: frontAo.tex }
-      shader.uniforms.uBackAo = { value: backAo.tex }
+
       shader.uniforms.uSideAxis = { value: sideAxis }
-      shader.uniforms.uFrontFlat = { value: frontFlat ? 1 : 0 }
-      shader.uniforms.uBackFlat = { value: backFlat ? 1 : 0 }
-      // Edge tint: uniform references that we live-update from outside the shader closure
-      // so changing the color / tint slider doesn't force a shader recompile.
+      shader.uniforms.uIsSimple = { value: isSimple ? 1 : 0 }
+      shader.uniforms.uUseBackPbr = { value: useBackPbr ? 1 : 0 }
+
+      // Optional PBR maps for back side
+      shader.uniforms.uBackNormal = { value: backNormal.tex }
+      shader.uniforms.uBackRough = { value: backRough.tex }
+      shader.uniforms.uBackMetal = { value: backMetal.tex }
+      shader.uniforms.uBackAo = { value: backAo.tex }
+      shader.uniforms.uFrontRough = { value: frontRough.tex }
+      shader.uniforms.uFrontMetal = { value: frontMetal.tex }
+      shader.uniforms.uFrontAo = { value: frontAo.tex }
+
       const edgeColorUniform = { value: new THREE.Color(edgeColor) }
       const edgeTintUniform = { value: edgeTint }
       shader.uniforms.uEdgeColor = edgeColorUniform
@@ -289,17 +286,14 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         uniform sampler2D uFrontAo;
         uniform sampler2D uBackAo;
         uniform int uSideAxis;
-        uniform int uFrontFlat;
-        uniform int uBackFlat;
+        uniform int uIsSimple;
+        uniform int uUseBackPbr;
         uniform vec3 uEdgeColor;
         uniform float uEdgeTint;
         float cs_sideBlend() {
           float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
           return smoothstep(-0.2, 0.2, c);
         }
-        // Mask that is 1 on the thin side bevel (normal perpendicular to sideAxis)
-        // and 0 on the front/back faces. smoothstep band keeps the transition soft
-        // enough to hide chip geometry aliasing on the corner radius.
         float cs_edgeMask() {
           float c = (uSideAxis == 0) ? vObjectNormal.x : ((uSideAxis == 1) ? vObjectNormal.y : vObjectNormal.z);
           return 1.0 - smoothstep(0.05, 0.35, abs(c));
@@ -315,58 +309,50 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
           vec4 sampledBack = texture2D(uBackAlbedo, vMapUv);
           vec4 sampledDiffuseColor = mix(sampledBack, sampledFront, csBmap);
           diffuseColor *= sampledDiffuseColor;
-          // Edge recolor: on the thin side bevel fade towards the solid edge color.
           float edgeMask = cs_edgeMask() * uEdgeTint;
           diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeColor, edgeMask);
         #endif`,
       )
 
-      // --- Roughness blend (G channel). When flat mode is active for a side,
-      // use base roughness (1.0) instead of sampling the PBR map.
+      // --- Roughness: in simple mode use base scalar; in PBR blend per-side maps.
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <roughnessmap_fragment>",
         `float roughnessFactor = roughness;
         #ifdef USE_ROUGHNESSMAP
-          float csBrough = cs_sideBlend();
-          // Check if current side is in flat mode
-          int currentFlat = (csBrough > 0.5) ? uFrontFlat : uBackFlat;
-          if (currentFlat == 0) {
+          if (uIsSimple == 0) {
+            float csBrough = cs_sideBlend();
             vec4 rFront = texture2D(uFrontRough, vRoughnessMapUv);
-            vec4 rBack = texture2D(uBackRough, vRoughnessMapUv);
+            vec4 rBack = (uUseBackPbr == 1) ? texture2D(uBackRough, vRoughnessMapUv) : vec4(1.0);
             vec4 texelRoughness = mix(rBack, rFront, csBrough);
             roughnessFactor *= texelRoughness.g;
           }
         #endif`,
       )
 
-      // --- Metalness blend (B channel). Flat mode = no metalness (0).
+      // --- Metalness
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <metalnessmap_fragment>",
         `float metalnessFactor = metalness;
         #ifdef USE_METALNESSMAP
-          float csBmetal = cs_sideBlend();
-          int currentFlatM = (csBmetal > 0.5) ? uFrontFlat : uBackFlat;
-          if (currentFlatM == 0) {
+          if (uIsSimple == 0) {
+            float csBmetal = cs_sideBlend();
             vec4 mFront = texture2D(uFrontMetal, vMetalnessMapUv);
-            vec4 mBack = texture2D(uBackMetal, vMetalnessMapUv);
+            vec4 mBack = (uUseBackPbr == 1) ? texture2D(uBackMetal, vMetalnessMapUv) : vec4(0.0);
             vec4 texelMetalness = mix(mBack, mFront, csBmetal);
             metalnessFactor *= texelMetalness.b;
-          } else {
-            metalnessFactor = 0.0;
           }
         #endif`,
       )
 
-      // --- AO blend (R channel). Flat mode = no AO darkening (1.0).
+      // --- AO blend
       shader.fragmentShader = shader.fragmentShader.replace(
         "#ifdef USE_AOMAP",
         `#ifdef USE_AOMAP
-          float csBao = cs_sideBlend();
-          int currentFlatAo = (csBao > 0.5) ? uFrontFlat : uBackFlat;
           float aoSample = 1.0;
-          if (currentFlatAo == 0) {
+          if (uIsSimple == 0) {
+            float csBao = cs_sideBlend();
             vec4 aFront = texture2D(uFrontAo, vAoMapUv);
-            vec4 aBack = texture2D(uBackAo, vAoMapUv);
+            vec4 aBack = (uUseBackPbr == 1) ? texture2D(uBackAo, vAoMapUv) : vec4(1.0);
             aoSample = mix(aBack, aFront, csBao).r;
           }
           #define CARD_AO_SAMPLE aoSample`,
@@ -375,34 +361,12 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
         "texture2D( aoMap, vAoMapUv ).r",
         "CARD_AO_SAMPLE",
       )
-
-      // --- Normal map bypass for flat mode. When flat is active, skip the normal
-      // perturbation entirely so the surface renders perfectly smooth.
-      shader.fragmentShader = shader.fragmentShader.replace(
-        "#include <normal_fragment_maps>",
-        `#include <normal_fragment_maps>
-        // Override normal perturbation if flat mode is active for current side
-        {
-          float csBnorm = cs_sideBlend();
-          int currentFlatN = (csBnorm > 0.5) ? uFrontFlat : uBackFlat;
-          if (currentFlatN == 1) {
-            // Reset to geometric normal, ignoring any normal map perturbation
-            normal = normalize(vNormal);
-            #ifdef USE_TANGENT
-              // Also reset for clearcoat if present
-              #ifdef USE_CLEARCOAT_NORMALMAP
-                clearcoatNormal = geometryNormal;
-              #endif
-            #endif
-          }
-        }`,
-      )
     }
 
     return mat
   }, [
     frontAlbedo.tex,
-    backAlbedo.tex,
+    effectiveBackAlbedo,
     frontNormal.tex,
     backNormal.tex,
     frontRough.tex,
@@ -411,15 +375,17 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     backMetal.tex,
     frontAo.tex,
     backAo.tex,
+    frontClearMask.tex,
     sideAxis,
+    isSimple,
+    useBackPbr,
   ])
 
-  // Apply flip-H/V to every PBR texture via repeat/center. center=0.5 pivots the mirror
-  // around the middle of the texture; repeat = -1 flips, = 1 keeps. Cheap and works on the fly.
+  // Apply flip-H/V to all sampled textures
   useEffect(() => {
     const textures: THREE.Texture[] = [
       frontAlbedo.tex,
-      backAlbedo.tex,
+      backPbrAlbedo.tex,
       frontNormal.tex,
       backNormal.tex,
       frontRough.tex,
@@ -428,6 +394,7 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
       backMetal.tex,
       frontAo.tex,
       backAo.tex,
+      frontClearMask.tex,
     ]
     for (const t of textures) {
       t.center.set(0.5, 0.5)
@@ -439,7 +406,7 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     flipH,
     flipV,
     frontAlbedo.tex,
-    backAlbedo.tex,
+    backPbrAlbedo.tex,
     frontNormal.tex,
     backNormal.tex,
     frontRough.tex,
@@ -448,12 +415,10 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     backMetal.tex,
     frontAo.tex,
     backAo.tex,
+    frontClearMask.tex,
   ])
 
-  // Edge tint is driven through the shader uniforms stored in `edgeUniformsRef`.
-  // onBeforeCompile populates that ref the first time the material is rendered.
-  // Before that happens (e.g. first frame), the ref is null and we simply skip;
-  // the shader gets the correct value from the closure on initial compile.
+  // Edge tint live update
   useEffect(() => {
     const u = edgeUniformsRef.current
     if (!u) return
@@ -461,45 +426,24 @@ export function useTwoSidedPhysicalMaterial(params: Params): THREE.MeshPhysicalM
     u.tint.value = edgeTint
   }, [edgeColor, edgeTint])
 
-  // Albedo override swap: whenever the user toggles solid / gradient / none or
-  // changes colors, the generated CanvasTexture reference changes. Point the
-  // shader uniforms at the new texture (or back at the preset albedo) without
-  // triggering a shader recompile.
+  // Albedo swap live update
   useEffect(() => {
     const u = albedoUniformsRef.current
     if (!u) return
-    u.front.value = frontAlbedoOverride ?? frontAlbedo.tex
-    u.back.value = backAlbedoOverride ?? backAlbedo.tex
-  }, [frontAlbedoOverride, backAlbedoOverride, frontAlbedo.tex, backAlbedo.tex])
+    u.front.value = frontAlbedo.tex
+    u.back.value = effectiveBackAlbedo
+  }, [frontAlbedo.tex, effectiveBackAlbedo])
 
-  // Apply Flip H/V to override textures too, so the user-facing "Flip horizontal /
-  // vertical" toggles behave identically regardless of whether the card shows a
-  // PBR design or a solid / gradient fill. Cheap (only two textures at most).
-  useEffect(() => {
-    const overrides = [frontAlbedoOverride, backAlbedoOverride].filter(
-      (t): t is THREE.Texture => !!t,
-    )
-    for (const t of overrides) {
-      t.center.set(0.5, 0.5)
-      t.repeat.x = flipH ? -1 : 1
-      t.repeat.y = flipV ? -1 : 1
-      t.needsUpdate = true
-    }
-  }, [flipH, flipV, frontAlbedoOverride, backAlbedoOverride])
-
-  // Apply live scalar params every render — Three's WebGLMaterials reads these
-  // plain properties on each frame, so updates are picked up without shader recompile.
+  // Live scalars
   material.roughness = roughness
   material.metalness = metalness
   material.clearcoat = clearcoat
   material.clearcoatRoughness = clearcoatRoughness
-  material.normalScale.set(normalScale, normalScale)
-  // Keep the clearcoat normals aligned with the base normals so the PBR glare
-  // follows the same micro-geometry as the diffuse — when the user dials up
-  // Normal intensity, the highlight also starts breaking up over the texture.
-  material.clearcoatNormalScale.set(normalScale, normalScale)
+  if (!isSimple) {
+    material.normalScale.set(normalScale, normalScale)
+    material.clearcoatNormalScale.set(normalScale, normalScale)
+  }
 
-  // Cleanup on unmount
   useEffect(() => {
     const m = material
     return () => {

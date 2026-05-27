@@ -1,15 +1,26 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
-import { ChevronDown, Check, Edit2, Image as ImageIcon, Loader2, Plus, Save, Trash2, Upload, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import {
+  Check,
+  ChevronDown,
+  Image as ImageIcon,
+  Loader2,
+  Palette,
+  Plus,
+  Save,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react"
 import { useStudio, MATERIAL_KEYS, type DesignPreset, type PresetMaterial } from "@/lib/studio-store"
 import {
   loadPresets,
   savePreset,
   deletePreset,
   updatePresetMaterial,
-  generatePresetId,
 } from "@/lib/preset-storage"
+import { upload } from "@vercel/blob/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -23,9 +34,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { Slider } from "@/components/ui/slider"
 import { toast } from "sonner"
 
-const CHANNELS = [
+/** PBR channels — must match server schema. */
+const PBR_CHANNELS = [
   { key: "albedo", label: "Albedo" },
   { key: "normal", label: "Normal" },
   { key: "roughness", label: "Roughness" },
@@ -35,8 +48,14 @@ const CHANNELS = [
   { key: "orm", label: "ORM (packed)" },
 ] as const
 
-type ChannelKey = (typeof CHANNELS)[number]["key"]
-type SideFiles = Partial<Record<ChannelKey, File>>
+type PbrChannelKey = (typeof PBR_CHANNELS)[number]["key"]
+type PbrFiles = Partial<Record<PbrChannelKey, File>>
+
+const TEMPLATE_DEFAULT_URL = "/textures/back-template.png"
+
+// ---------------------------------------------------------------------------
+// PresetManager — top-level UI
+// ---------------------------------------------------------------------------
 
 export function PresetManager() {
   const presets = useStudio((s) => s.presets)
@@ -69,13 +88,12 @@ export function PresetManager() {
     try {
       await deletePreset(id)
       setPresets(presets.filter((p) => p.id !== id))
-      toast.success("Preset deleted")
+      toast.success("Material deleted")
     } catch {
-      toast.error("Failed to delete preset")
+      toast.error("Failed to delete material")
     }
   }
 
-  // Snapshots the current material-state slice into a `PresetMaterial`.
   const snapshotMaterial = (): PresetMaterial => {
     const s = useStudio.getState()
     const out = {} as PresetMaterial
@@ -85,16 +103,13 @@ export function PresetManager() {
     return out
   }
 
-  // Save material settings to the active preset
   const onSaveMaterialToActive = async () => {
     if (!activePresetId) return
     setSavingMaterial(true)
     try {
       const material = snapshotMaterial()
-      updatePresetMaterial(activePresetId, material)
-      setPresets(
-        presets.map((p) => (p.id === activePresetId ? { ...p, material } : p)),
-      )
+      await updatePresetMaterial(activePresetId, material)
+      setPresets(presets.map((p) => (p.id === activePresetId ? { ...p, material } : p)))
       toast.success("Material saved to design")
     } catch (err) {
       console.error("[v0] save material error:", err)
@@ -104,23 +119,12 @@ export function PresetManager() {
     }
   }
 
-  // Update a single material property for a specific preset (independent per preset)
-  const handleUpdateMaterial = (presetId: string, key: string, value: number) => {
-    setPresets(
-      presets.map((p) => {
-        if (p.id !== presetId || !p.material) return p
-        const updatedMaterial = { ...p.material, [key]: value }
-        // Persist to storage
-        updatePresetMaterial(presetId, updatedMaterial)
-        return { ...p, material: updatedMaterial }
-      }),
-    )
-  }
-
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <Label className="text-xs uppercase tracking-wide text-muted-foreground">Saved designs</Label>
+        <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+          Materials
+        </Label>
         <div className="flex items-center gap-1.5">
           {activePresetId && (
             <Button
@@ -129,18 +133,22 @@ export function PresetManager() {
               className="h-7 gap-1 bg-transparent"
               onClick={onSaveMaterialToActive}
               disabled={savingMaterial}
-              title="Save current material settings to active design"
+              title="Save current settings to active material"
             >
-              {savingMaterial ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Save className="size-3.5" />
-              )}
-              Save material
+              {savingMaterial ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+              Save
             </Button>
           )}
-          <CreateSimpleDialog onCreated={refresh} snapshotMaterial={snapshotMaterial} />
-          <UploadPresetDialog onUploaded={refresh} snapshotMaterial={snapshotMaterial} />
+          <CreateMaterialDialog
+            kind="pbr"
+            onCreated={refresh}
+            snapshotMaterial={snapshotMaterial}
+          />
+          <CreateMaterialDialog
+            kind="simple"
+            onCreated={refresh}
+            snapshotMaterial={snapshotMaterial}
+          />
         </div>
       </div>
 
@@ -156,56 +164,48 @@ export function PresetManager() {
             <EmptyMedia>
               <Upload className="size-5" />
             </EmptyMedia>
-            <EmptyTitle>No presets yet</EmptyTitle>
-            <EmptyDescription>Upload a PBR texture set to save it locally.</EmptyDescription>
+            <EmptyTitle>No materials yet</EmptyTitle>
+            <EmptyDescription>
+              Create a Simple material (design + gloss) or PBR material (full texture set).
+            </EmptyDescription>
           </EmptyHeader>
         </Empty>
       )}
 
       <div className="flex flex-col gap-1.5">
-        {presets.map((p) => {
-          const active = activePresetId === p.id
-          return (
-            <PresetRow
-              key={p.id}
-              preset={p}
-              active={active}
-              onApply={() => applyPreset(p)}
-              onDelete={() => onDelete(p.id)}
-              onUpdateMaterial={handleUpdateMaterial}
-              snapshotMaterial={snapshotMaterial}
-            />
-          )
-        })}
+        {presets.map((p) => (
+          <PresetRow
+            key={p.id}
+            preset={p}
+            active={activePresetId === p.id}
+            onApply={() => applyPreset(p)}
+            onDelete={() => onDelete(p.id)}
+            onRefresh={refresh}
+          />
+        ))}
       </div>
     </div>
   )
 }
 
-/**
- * A single preset row with expand/collapse to show material editing sliders.
- */
+// ---------------------------------------------------------------------------
+// PresetRow — single material in the list, expandable to edit textures + sliders
+// ---------------------------------------------------------------------------
+
 function PresetRow({
   preset,
   active,
   onApply,
   onDelete,
-  onUpdateMaterial,
-  snapshotMaterial,
+  onRefresh,
 }: {
   preset: DesignPreset
   active: boolean
   onApply: () => void
   onDelete: () => void
-  onUpdateMaterial: (presetId: string, key: string, value: number) => void
-  snapshotMaterial: () => PresetMaterial
+  onRefresh: () => void
 }) {
-  const hasMaterial = !!preset.material
   const [expanded, setExpanded] = useState(false)
-
-  const handleMaterialChange = (key: string, value: number) => {
-    onUpdateMaterial(preset.id, key, value)
-  }
 
   return (
     <div className="space-y-1.5">
@@ -216,644 +216,408 @@ function PresetRow({
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
         >
           <span
-            className={`flex size-4 shrink-0 items-center justify-center rounded-full border ${active ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}
+            className={`flex size-4 shrink-0 items-center justify-center rounded-full border ${
+              active ? "border-primary bg-primary text-primary-foreground" : "border-border"
+            }`}
           >
             {active && <Check className="size-3" />}
           </span>
           <span className="min-w-0 flex-1 truncate text-sm">{preset.name}</span>
-          {hasMaterial && (
-            <span
-              className="shrink-0 rounded-full bg-secondary px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-secondary-foreground"
-              title="Includes material settings"
-            >
-              M
-            </span>
-          )}
+          <span
+            className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide ${
+              preset.type === "simple"
+                ? "bg-secondary text-secondary-foreground"
+                : "bg-primary/10 text-primary"
+            }`}
+          >
+            {preset.type === "simple" ? "Simple" : "PBR"}
+          </span>
         </button>
 
-        {/* Expand button for material editing */}
-        {hasMaterial && (
-          <Button
-            size="icon"
-            variant="ghost"
-            className="size-7"
-            onClick={() => setExpanded(!expanded)}
-            title={expanded ? "Collapse" : "Expand to edit material"}
-          >
-            <ChevronDown
-              className={`size-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
-            />
-          </Button>
-        )}
-
-        {/* Edit textures button */}
-        <EditPresetDialog preset={preset} snapshotMaterial={snapshotMaterial} />
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-7"
+          onClick={() => setExpanded(!expanded)}
+          title={expanded ? "Collapse" : "Expand"}
+        >
+          <ChevronDown className={`size-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+        </Button>
 
         <Button
           size="icon"
           variant="ghost"
           className="size-7"
           onClick={onDelete}
-          aria-label="Delete preset"
+          aria-label="Delete material"
         >
           <Trash2 className="size-3.5" />
         </Button>
       </div>
 
-      {/* Expanded material editing panel */}
-      {expanded && hasMaterial && (
-        <div className="space-y-2.5 rounded-md border bg-muted/30 p-3">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Edit material
-          </p>
-
-          <MaterialSliders preset={preset} onMaterialChange={handleMaterialChange} />
-        </div>
+      {expanded && (
+        <PresetEditor preset={preset} onRefresh={onRefresh} />
       )}
     </div>
   )
 }
 
-/**
- * Material editing sliders for an expanded preset.
- * Uses LOCAL state for each preset - changes are independent per preset.
- * For Simple presets: only Roughness and Clearcoat.
- * For PBR presets: full set of sliders.
- */
-function MaterialSliders({
+// ---------------------------------------------------------------------------
+// PresetEditor — replace textures, edit back color/template, edit material strength
+// ---------------------------------------------------------------------------
+
+function PresetEditor({
   preset,
-  onMaterialChange,
+  onRefresh,
 }: {
   preset: DesignPreset
-  onMaterialChange: (key: string, value: number) => void
-}) {
-  if (!preset.material) return null
-
-  const isSimple = preset.type === "simple"
-  const m = preset.material
-
-  // Simple preset: only 2 sliders
-  if (isSimple) {
-    return (
-      <div className="space-y-2">
-        <SliderRow
-          label="Roughness"
-          value={m.cardRoughness}
-          min={0}
-          max={1}
-          step={0.01}
-          onChange={(v) => onMaterialChange("cardRoughness", v)}
-        />
-        <SliderRow
-          label="Clearcoat"
-          value={m.cardClearcoat}
-          min={0}
-          max={1}
-          step={0.01}
-          onChange={(v) => onMaterialChange("cardClearcoat", v)}
-        />
-      </div>
-    )
-  }
-
-  // PBR preset: full sliders
-  return (
-    <div className="space-y-2">
-      <SliderRow
-        label="Roughness"
-        value={m.cardRoughness}
-        min={0}
-        max={1}
-        step={0.01}
-        onChange={(v) => onMaterialChange("cardRoughness", v)}
-      />
-      <SliderRow
-        label="Metalness"
-        value={m.cardMetalness}
-        min={0}
-        max={1}
-        step={0.01}
-        onChange={(v) => onMaterialChange("cardMetalness", v)}
-      />
-      <SliderRow
-        label="Normal intensity"
-        value={m.cardNormalScale}
-        min={0}
-        max={2}
-        step={0.01}
-        onChange={(v) => onMaterialChange("cardNormalScale", v)}
-      />
-      <SliderRow
-        label="Clearcoat"
-        value={m.cardClearcoat}
-        min={0}
-        max={1}
-        step={0.01}
-        onChange={(v) => onMaterialChange("cardClearcoat", v)}
-      />
-      <SliderRow
-        label="Clearcoat roughness"
-        value={m.cardClearcoatRoughness}
-        min={0}
-        max={1}
-        step={0.01}
-        onChange={(v) => onMaterialChange("cardClearcoatRoughness", v)}
-      />
-      <SliderRow
-        label="Edge tint"
-        value={m.cardEdgeTint}
-        min={0}
-        max={1}
-        step={0.01}
-        onChange={(v) => onMaterialChange("cardEdgeTint", v)}
-      />
-
-      {/* Glare */}
-      {m.glareMode !== "none" && (
-        <>
-          <SliderRow
-            label="Glare intensity"
-            value={m.glareIntensity}
-            min={0}
-            max={1}
-            step={0.01}
-            onChange={(v) => onMaterialChange("glareIntensity", v)}
-          />
-          <SliderRow
-            label="Glare width"
-            value={m.glareWidth}
-            min={0.1}
-            max={3}
-            step={0.1}
-            onChange={(v) => onMaterialChange("glareWidth", v)}
-          />
-          <SliderRow
-            label="Glare softness"
-            value={m.glareSoftness}
-            min={0}
-            max={1}
-            step={0.01}
-            onChange={(v) => onMaterialChange("glareSoftness", v)}
-          />
-        </>
-      )}
-
-      {/* Holographic */}
-      {m.holoEnabled && (
-        <>
-          <SliderRow
-            label="Holo intensity"
-            value={m.holoIntensity}
-            min={0}
-            max={1}
-            step={0.01}
-            onChange={(v) => onMaterialChange("holoIntensity", v)}
-          />
-          <SliderRow
-            label="Holo scale"
-            value={m.holoScale}
-            min={0.5}
-            max={5}
-            step={0.1}
-            onChange={(v) => onMaterialChange("holoScale", v)}
-          />
-          <SliderRow
-            label="Holo hue shift"
-            value={m.holoHueShift}
-            min={0}
-            max={1}
-            step={0.01}
-            onChange={(v) => onMaterialChange("holoHueShift", v)}
-          />
-        </>
-      )}
-
-      {/* Foil */}
-      {m.foilEnabled && (
-        <>
-          <SliderRow
-            label="Foil sheen"
-            value={m.foilSheen}
-            min={0}
-            max={2}
-            step={0.01}
-            onChange={(v) => onMaterialChange("foilSheen", v)}
-          />
-          <SliderRow
-            label="Foil sparkle"
-            value={m.foilSparkle}
-            min={0}
-            max={1}
-            step={0.01}
-            onChange={(v) => onMaterialChange("foilSparkle", v)}
-          />
-          <SliderRow
-            label="Foil density"
-            value={m.foilDensity}
-            min={0}
-            max={1}
-            step={0.01}
-            onChange={(v) => onMaterialChange("foilDensity", v)}
-          />
-          <SliderRow
-            label="Foil sparkle size"
-            value={m.foilSparkleSize}
-            min={0.5}
-            max={3}
-            step={0.1}
-            onChange={(v) => onMaterialChange("foilSparkleSize", v)}
-          />
-        </>
-      )}
-    </div>
-  )
-}
-
-/**
- * Simple slider row component.
- */
-function SliderRow({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-}: {
-  label: string
-  value: number
-  min: number
-  max: number
-  step: number
-  onChange: (v: number) => void
-}) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <label className="text-[11px] text-muted-foreground flex-shrink-0">{label}</label>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="flex-1 h-1.5"
-      />
-      <span className="text-[10px] font-mono text-muted-foreground w-10 text-right">
-        {value.toFixed(2)}
-      </span>
-    </div>
-  )
-}
-
-/**
- * Create a simple material: front albedo + optional gloss, back color or PBR.
- */
-function CreateSimpleDialog({
-  onCreated,
-  snapshotMaterial,
-}: {
-  onCreated: () => void
-  snapshotMaterial: () => PresetMaterial
+  onRefresh: () => void
 }) {
   const presets = useStudio((s) => s.presets)
   const setPresets = useStudio((s) => s.setPresets)
   const applyPreset = useStudio((s) => s.applyPreset)
+  const setMany = useStudio((s) => s.setMany)
+  const activePresetId = useStudio((s) => s.activePresetId)
+  const isActive = activePresetId === preset.id
+  const isSimple = preset.type === "simple"
 
-  const [open, setOpen] = useState(false)
-  const [name, setName] = useState("")
-  const [frontAlbedo, setFrontAlbedo] = useState<File | null>(null)
-  const [frontGloss, setFrontGloss] = useState<File | null>(null)
-  const [backMode, setBackMode] = useState<"color" | "pbr">("color")
-  const [backColor, setBackColor] = useState("#ffffff")
-  const [backDesign, setBackDesign] = useState<File | null>(null)
-  const [backPbrFiles, setBackPbrFiles] = useState<SideFiles>({})
-  const [includeMaterial, setIncludeMaterial] = useState(true)
+  // Live edits
+  const [name, setName] = useState(preset.name)
+  const [backColor, setBackColor] = useState(preset.backColor || "#000000")
+  const [useTemplate, setUseTemplate] = useState(!!preset.backTemplate)
   const [saving, setSaving] = useState(false)
 
-  const handleCreate = async () => {
-    if (!name.trim()) {
-      toast.error("Enter a preset name")
-      return
-    }
-    if (!frontAlbedo) {
-      toast.error("Front design (albedo) is required")
-      return
-    }
+  // Replacement files (optional)
+  const [pbrFront, setPbrFront] = useState<PbrFiles>({})
+  const [pbrBack, setPbrBack] = useState<PbrFiles>({})
+  const [simpleAlbedo, setSimpleAlbedo] = useState<File | null>(null)
+  const [simpleClearMask, setSimpleClearMask] = useState<File | null>(null)
 
+  // Live update back settings on the active preset (so user sees changes instantly)
+  useEffect(() => {
+    if (!isActive) return
+    setMany({ backColor, backTemplate: useTemplate ? (preset.backTemplate || TEMPLATE_DEFAULT_URL) : undefined })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backColor, useTemplate, isActive])
+
+  const material = preset.material
+  const handleMaterialChange = async (key: keyof PresetMaterial, value: number) => {
+    if (!material) return
+    const newMat = { ...material, [key]: value }
+    // Live-update the active preset's runtime values too
+    if (isActive) setMany({ [key]: value } as Partial<typeof newMat>)
+    setPresets(presets.map((p) => (p.id === preset.id ? { ...p, material: newMat } : p)))
+    try {
+      await updatePresetMaterial(preset.id, newMat)
+    } catch (err) {
+      console.error("[v0] live material update failed:", err)
+    }
+  }
+
+  const onSaveAll = async () => {
     setSaving(true)
     try {
-      const frontFiles: SideFiles = { albedo: frontAlbedo }
-      if (frontGloss) {
-        frontFiles.metallic = frontGloss
-      }
-
-      const backFiles: SideFiles = {}
-      if (backMode === "color") {
-        // For color mode: store the color as metadata, and optional design PNG
-        if (backDesign) {
-          backFiles.albedo = backDesign
-        }
-      } else {
-        // PBR mode: use uploaded files
-        Object.assign(backFiles, backPbrFiles)
-      }
+      const frontFiles: Record<string, File> = isSimple
+        ? simpleAlbedo
+          ? { albedo: simpleAlbedo, ...(simpleClearMask ? { clearcoatMask: simpleClearMask } : {}) }
+          : simpleClearMask
+            ? { clearcoatMask: simpleClearMask }
+            : {}
+        : (pbrFront as Record<string, File>)
+      const backFiles: Record<string, File> = isSimple ? {} : (pbrBack as Record<string, File>)
 
       await savePreset({
-        id: crypto.randomUUID(),
-        name: name.trim(),
-        type: "simple",
+        id: preset.id,
+        name: name.trim() || preset.name,
+        type: preset.type,
         frontFiles,
         backFiles,
-        backColor: backMode === "color" ? backColor : undefined,
-        material: includeMaterial ? snapshotMaterial() : undefined,
+        backColor,
+        backTemplate: useTemplate
+          ? preset.backTemplate || TEMPLATE_DEFAULT_URL
+          : undefined,
+        backTemplateClear: !useTemplate,
+        material: preset.material,
       })
 
-      await new Promise((r) => setTimeout(r, 100))
-      onCreated()
-      
-      // Refresh and apply the new preset
-      const updated = await loadPresets()
-      setPresets(updated)
-      // Apply the newest preset (should be first since ordered DESC by created_at)
-      if (updated.length > 0) {
-        applyPreset(updated[0])
+      toast.success("Material updated")
+      onRefresh()
+      setPbrFront({})
+      setPbrBack({})
+      setSimpleAlbedo(null)
+      setSimpleClearMask(null)
+      // Re-apply if active, so new textures show
+      if (isActive) {
+        const updated = await loadPresets()
+        const fresh = updated.find((p) => p.id === preset.id)
+        if (fresh) applyPreset(fresh)
       }
-
-      toast.success("Simple material created")
-      setOpen(false)
-      setName("")
-      setFrontAlbedo(null)
-      setFrontGloss(null)
-      setBackDesign(null)
-      setBackPbrFiles({})
     } catch (err) {
-      console.error("[v0] create simple error:", err)
-      toast.error("Failed to create material")
+      console.error("[v0] update preset error:", err)
+      toast.error("Failed to update material")
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="h-7 gap-1 bg-transparent">
-          <Plus className="size-3.5" />
-          Simple
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Create Simple Material</DialogTitle>
-          <DialogDescription>
-            Design + optional gloss on front, color or PBR on back.
-          </DialogDescription>
-        </DialogHeader>
+    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+      {/* Name */}
+      <div className="space-y-1.5">
+        <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">Name</Label>
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="h-8 text-sm"
+        />
+      </div>
 
-        <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-          {/* Preset name */}
-          <div className="space-y-2">
-            <Label htmlFor="simple-name" className="text-sm">
-              Preset name
-            </Label>
-            <Input
-              id="simple-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Aurora Mountains"
-              className="text-sm"
-            />
-          </div>
-
-          {/* Front side */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Front</Label>
-
-            {/* Albedo (required) */}
-            <div className="rounded-md border bg-muted/30 p-3">
-              <div className="text-xs font-medium text-muted-foreground mb-2">DESIGN (Albedo)</div>
-              <FileInput
-                label="Design image"
-                file={frontAlbedo}
-                onFile={setFrontAlbedo}
-                accept="image/*"
-              />
-            </div>
-
-            {/* Optional gloss */}
-            <div className="rounded-md border bg-muted/30 p-3">
-              <div className="text-xs font-medium text-muted-foreground mb-2">GLOSS (Metallic) - Optional</div>
-              <FileInput
-                label="Gloss/shine mask"
-                file={frontGloss}
-                onFile={setFrontGloss}
-                accept="image/*"
-              />
-            </div>
-          </div>
-
-          {/* Back side mode */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium">Back</Label>
-
-            <div className="flex gap-2">
-              <label className="flex flex-1 items-center gap-2 rounded-md border px-3 py-2 cursor-pointer hover:bg-muted/50">
-                <input
-                  type="radio"
-                  name="back-mode"
-                  value="color"
-                  checked={backMode === "color"}
-                  onChange={(e) => setBackMode(e.target.value as "color" | "pbr")}
-                  className="size-3.5"
-                />
-                <span className="text-sm font-medium">Simple (Color)</span>
-              </label>
-              <label className="flex flex-1 items-center gap-2 rounded-md border px-3 py-2 cursor-pointer hover:bg-muted/50">
-                <input
-                  type="radio"
-                  name="back-mode"
-                  value="pbr"
-                  checked={backMode === "pbr"}
-                  onChange={(e) => setBackMode(e.target.value as "color" | "pbr")}
-                  className="size-3.5"
-                />
-                <span className="text-sm font-medium">Full PBR</span>
-              </label>
-            </div>
-          </div>
-
-          {/* Back: Color mode */}
-          {backMode === "color" && (
-            <div className="space-y-3 rounded-md border bg-muted/20 p-3">
-              <div className="flex items-center gap-3">
-                <div className="text-xs font-medium text-muted-foreground flex-1">Background Color</div>
-                <input
-                  type="color"
-                  value={backColor}
-                  onChange={(e) => setBackColor(e.target.value)}
-                  className="size-8 rounded cursor-pointer"
-                />
-              </div>
-
-              <div className="pt-2 border-t">
-                <div className="text-xs font-medium text-muted-foreground mb-2">Design (Optional)</div>
-                <FileInput
-                  label="Back design image"
-                  file={backDesign}
-                  onFile={setBackDesign}
-                  accept="image/*"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Back: PBR mode */}
-          {backMode === "pbr" && (
-            <SidePanel
-              label="Back PBR"
-              side="back"
-              files={backPbrFiles}
-              onChange={setBackPbrFiles}
-            />
-          )}
-
-          {/* Material settings */}
-          <label className="flex items-start gap-2 rounded-md border bg-muted/30 p-2.5 text-xs">
-            <input
-              type="checkbox"
-              checked={includeMaterial}
-              onChange={(e) => setIncludeMaterial(e.target.checked)}
-              className="mt-0.5 size-3.5 cursor-pointer accent-primary"
-            />
-            <span className="flex flex-col gap-0.5">
-              <span className="font-medium text-foreground">Include material settings</span>
-              <span className="text-muted-foreground">
-                Save current roughness, glare, and special effects.
-              </span>
-            </span>
-          </label>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleCreate} disabled={saving}>
-            {saving ? (
-              <>
-                <Loader2 className="mr-1.5 size-4 animate-spin" />
-                Creating…
-              </>
-            ) : (
-              "Create Material"
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-/**
- * Simple file input component.
- */
-function FileInput({
-  label,
-  file,
-  onFile,
-  accept = "*",
-}: {
-  label: string
-  file: File | null
-  onFile: (f: File | null) => void
-  accept?: string
-}) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <div className="flex items-center gap-1.5">
-        {file && <span className="text-xs font-mono text-foreground">{file.name}</span>}
-        <label className="cursor-pointer">
-          <input
-            type="file"
-            accept={accept}
-            onChange={(e) => onFile(e.target.files?.[0] || null)}
-            className="hidden"
+      {/* Texture replacement */}
+      {isSimple ? (
+        <div className="space-y-2 rounded-md border bg-background/50 p-2.5">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Front design
+          </p>
+          <FileSlot label="Design (Albedo)" file={simpleAlbedo} onFile={setSimpleAlbedo} />
+          <FileSlot
+            label="Clearcoat mask (optional)"
+            file={simpleClearMask}
+            onFile={setSimpleClearMask}
           />
-          <span className="inline-block rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 transition-opacity">
-            {file ? "Change" : "Upload"}
-          </span>
+          <p className="text-[10px] text-muted-foreground">
+            Mask: white = glossy, black = matte. Leave empty for uniform finish.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-2">
+          <PbrSidePanel label="Front" files={pbrFront} onChange={setPbrFront} />
+          <PbrSidePanel label="Back" files={pbrBack} onChange={setPbrBack} />
+        </div>
+      )}
+
+      {/* Back settings — color + template toggle */}
+      <div className="space-y-2.5 rounded-md border bg-background/50 p-2.5">
+        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          Back side
+        </p>
+        <div className="flex items-center justify-between gap-2">
+          <Label className="text-xs">Background color</Label>
+          <div className="flex items-center gap-1.5">
+            <Input
+              type="color"
+              value={backColor}
+              onChange={(e) => setBackColor(e.target.value)}
+              className="h-7 w-12 cursor-pointer p-1"
+            />
+            <Input
+              value={backColor}
+              onChange={(e) => setBackColor(e.target.value)}
+              className="h-7 w-24 font-mono text-xs"
+            />
+          </div>
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={useTemplate}
+            onChange={(e) => setUseTemplate(e.target.checked)}
+            className="size-3.5 cursor-pointer accent-primary"
+          />
+          <span className="text-xs">Show YooMoney back template</span>
         </label>
       </div>
+
+      {/* Material strength sliders */}
+      {material && (
+        <div className="space-y-2 rounded-md border bg-background/50 p-2.5">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Material strength
+          </p>
+          <SliderRow
+            label="Roughness"
+            value={material.cardRoughness}
+            min={0}
+            max={1}
+            onChange={(v) => handleMaterialChange("cardRoughness", v)}
+          />
+          {!isSimple && (
+            <SliderRow
+              label="Metalness"
+              value={material.cardMetalness}
+              min={0}
+              max={1}
+              onChange={(v) => handleMaterialChange("cardMetalness", v)}
+            />
+          )}
+          {!isSimple && (
+            <SliderRow
+              label="Normal"
+              value={material.cardNormalScale}
+              min={0}
+              max={3}
+              onChange={(v) => handleMaterialChange("cardNormalScale", v)}
+            />
+          )}
+          <SliderRow
+            label="Clearcoat"
+            value={material.cardClearcoat}
+            min={0}
+            max={1}
+            onChange={(v) => handleMaterialChange("cardClearcoat", v)}
+          />
+          <SliderRow
+            label="Clearcoat rough."
+            value={material.cardClearcoatRoughness}
+            min={0}
+            max={1}
+            onChange={(v) => handleMaterialChange("cardClearcoatRoughness", v)}
+          />
+        </div>
+      )}
+
+      <Button onClick={onSaveAll} disabled={saving} size="sm" className="w-full gap-1.5">
+        {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+        Save changes
+      </Button>
     </div>
   )
 }
 
-function UploadPresetDialog({
-  onUploaded,
+function SliderRow({
+  label,
+  value,
+  min,
+  max,
+  step = 0.01,
+  onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  step?: number
+  onChange: (v: number) => void
+}) {
+  return (
+    <div className="grid gap-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] text-muted-foreground">{label}</span>
+        <span className="font-mono text-[10px] text-muted-foreground">{value.toFixed(2)}</span>
+      </div>
+      <Slider
+        min={min}
+        max={max}
+        step={step}
+        value={[value]}
+        onValueChange={(v) => onChange(v[0])}
+      />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// CreateMaterialDialog — both PBR and Simple, controlled by `kind`
+// ---------------------------------------------------------------------------
+
+function CreateMaterialDialog({
+  kind,
+  onCreated,
   snapshotMaterial,
 }: {
-  onUploaded: () => void
+  kind: "simple" | "pbr"
+  onCreated: () => void
   snapshotMaterial: () => PresetMaterial
 }) {
-  const [open, setOpen] = useState(false)
-  const [name, setName] = useState("")
-  const [includeMaterial, setIncludeMaterial] = useState(true)
-  const [uploading, setUploading] = useState(false)
-  const [front, setFront] = useState<SideFiles>({})
-  const [back, setBack] = useState<SideFiles>({})
-  
-  // Get applyPreset from store so we can apply the new preset after upload
+  const setPresets = useStudio((s) => s.setPresets)
   const applyPreset = useStudio((s) => s.applyPreset)
 
-  const totalCount = Object.keys(front).length + Object.keys(back).length
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [includeMaterial, setIncludeMaterial] = useState(true)
+
+  // Simple state
+  const [simpleAlbedo, setSimpleAlbedo] = useState<File | null>(null)
+  const [simpleClearMask, setSimpleClearMask] = useState<File | null>(null)
+
+  // PBR state
+  const [pbrFront, setPbrFront] = useState<PbrFiles>({})
+  const [pbrBack, setPbrBack] = useState<PbrFiles>({})
+
+  // Back settings
+  const [backColor, setBackColor] = useState("#000000")
+  const [useTemplate, setUseTemplate] = useState(false)
 
   const reset = () => {
     setName("")
-    setFront({})
-    setBack({})
+    setSimpleAlbedo(null)
+    setSimpleClearMask(null)
+    setPbrFront({})
+    setPbrBack({})
+    setBackColor("#000000")
+    setUseTemplate(false)
     setIncludeMaterial(true)
   }
 
-  const handleSubmit = async () => {
+  const isPbr = kind === "pbr"
+  const totalCount = isPbr
+    ? Object.keys(pbrFront).length + Object.keys(pbrBack).length
+    : (simpleAlbedo ? 1 : 0) + (simpleClearMask ? 1 : 0)
+
+  const handleCreate = async () => {
     if (!name.trim()) {
-      toast.error("Enter a preset name")
+      toast.error("Enter a name")
       return
     }
-    if (totalCount === 0) {
-      toast.error("Select at least one texture")
+    if (isPbr && !pbrFront.albedo) {
+      toast.error("Front albedo is required for PBR materials")
+      return
+    }
+    if (!isPbr && !simpleAlbedo) {
+      toast.error("Front design (albedo) is required")
       return
     }
 
-    setUploading(true)
-
+    setSaving(true)
     try {
+      let frontFiles: Record<string, File> = {}
+      let backFiles: Record<string, File> = {}
+
+      if (isPbr) {
+        frontFiles = pbrFront as Record<string, File>
+        backFiles = pbrBack as Record<string, File>
+      } else {
+        if (simpleAlbedo) frontFiles.albedo = simpleAlbedo
+        if (simpleClearMask) frontFiles.clearcoatMask = simpleClearMask
+      }
+
       await savePreset({
-        id: generatePresetId(),
+        id: crypto.randomUUID(),
         name: name.trim(),
-        type: "pbr",
-        frontFiles: front as Record<string, File>,
-        backFiles: back as Record<string, File>,
+        type: kind,
+        frontFiles,
+        backFiles,
+        backColor,
+        backTemplate: useTemplate ? TEMPLATE_DEFAULT_URL : undefined,
         material: includeMaterial ? snapshotMaterial() : undefined,
       })
 
-      toast.success("Preset saved locally")
-      setOpen(false)
-      reset()
-      
-      // Refresh and apply the new preset
+      onCreated()
       const updated = await loadPresets()
-      onUploaded()
-      // Apply the newest preset (should be first since ordered DESC by created_at)
+      setPresets(updated)
       if (updated.length > 0) {
+        // Apply the just-created preset (newest is first since DESC order)
         applyPreset(updated[0])
       }
+
+      toast.success(`${isPbr ? "PBR" : "Simple"} material created`)
+      setOpen(false)
+      reset()
     } catch (err) {
-      console.error("[v0] preset save error:", err)
-      toast.error(`Failed to save preset: ${(err as Error).message}`)
+      console.error("[v0] create error:", err)
+      toast.error(`Failed to create material: ${(err as Error).message}`)
     } finally {
-      setUploading(false)
+      setSaving(false)
     }
   }
 
@@ -866,40 +630,102 @@ function UploadPresetDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="h-7 gap-1 bg-transparent">
-          <Plus className="size-3.5" /> PBR
+        <Button size="sm" variant={isPbr ? "default" : "outline"} className="h-7 gap-1">
+          <Plus className="size-3.5" />
+          {isPbr ? "PBR" : "Simple"}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className={isPbr ? "max-w-2xl" : "sm:max-w-md"}>
         <DialogHeader>
-          <DialogTitle>Upload PBR preset</DialogTitle>
+          <DialogTitle>Create {isPbr ? "PBR" : "Simple"} Material</DialogTitle>
           <DialogDescription>
-            Upload individual channel maps for the front and back of the card. Textures are stored
-            locally in your browser (IndexedDB). Any channel can be left empty.
+            {isPbr
+              ? "Upload the full set of PBR maps for the front (and optional back)."
+              : "Front design + optional clearcoat mask. Black = matte, white = glossy."}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="mt-4 grid gap-4">
-          <div className="grid gap-1.5">
-            <Label htmlFor="preset-name">Preset name</Label>
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+          {/* Name */}
+          <div className="space-y-1.5">
+            <Label htmlFor="mat-name">Name</Label>
             <Input
-              id="preset-name"
+              id="mat-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Midnight Steel"
-              required
+              placeholder={isPbr ? "e.g. Violet Metal" : "e.g. Monster Eyes"}
+              className="text-sm"
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <SidePanel label="Front" side="front" files={front} onChange={setFront} />
-            <SidePanel label="Back" side="back" files={back} onChange={setBack} />
+          {/* Front textures */}
+          {isPbr ? (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <PbrSidePanel label="Front" files={pbrFront} onChange={setPbrFront} />
+              <PbrSidePanel label="Back" files={pbrBack} onChange={setPbrBack} />
+            </div>
+          ) : (
+            <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Front
+              </p>
+              <FileSlot label="Design (Albedo)" file={simpleAlbedo} onFile={setSimpleAlbedo} />
+              <FileSlot
+                label="Clearcoat mask (optional)"
+                file={simpleClearMask}
+                onFile={setSimpleClearMask}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Mask: white pixels are glossy (e.g. monster eyes), black are matte.
+              </p>
+            </div>
+          )}
+
+          {/* Back settings */}
+          <div className="space-y-2.5 rounded-md border bg-muted/30 p-3">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Back side
+            </p>
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-xs">Background color</Label>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="color"
+                  value={backColor}
+                  onChange={(e) => setBackColor(e.target.value)}
+                  className="h-8 w-14 cursor-pointer p-1"
+                />
+                <Input
+                  value={backColor}
+                  onChange={(e) => setBackColor(e.target.value)}
+                  className="h-8 w-24 font-mono text-xs"
+                />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useTemplate}
+                onChange={(e) => setUseTemplate(e.target.checked)}
+                className="size-3.5 cursor-pointer accent-primary"
+              />
+              <span className="text-xs">Show YooMoney back template overlay</span>
+            </label>
+            {useTemplate && (
+              <div className="rounded-md border overflow-hidden bg-background">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={TEMPLATE_DEFAULT_URL}
+                  alt="Back template preview"
+                  className="w-full"
+                  style={{ background: backColor }}
+                />
+              </div>
+            )}
           </div>
 
           <p className="text-xs text-muted-foreground">
-            {totalCount > 0
-              ? `${totalCount} file${totalCount === 1 ? "" : "s"} ready to save.`
-              : "No files selected yet."}
+            {totalCount} file{totalCount === 1 ? "" : "s"} ready.
           </p>
 
           <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-muted/30 p-2.5 text-xs">
@@ -910,27 +736,26 @@ function UploadPresetDialog({
               className="mt-0.5 size-3.5 cursor-pointer accent-primary"
             />
             <span className="flex flex-col gap-0.5">
-              <span className="font-medium text-foreground">Include current material settings</span>
+              <span className="font-medium text-foreground">Save current material settings</span>
               <span className="text-muted-foreground">
-                Saves card roughness, metalness, edge color, glare, holographic and foil settings together
-                with the textures. They&apos;ll be restored every time you load this design.
+                Roughness, clearcoat, glare, holo and foil settings.
               </span>
             </span>
           </label>
         </div>
 
-        <DialogFooter className="mt-6">
-          <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={uploading}>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button type="button" onClick={handleSubmit} disabled={uploading || totalCount === 0}>
-            {uploading ? (
+          <Button onClick={handleCreate} disabled={saving}>
+            {saving ? (
               <>
                 <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                Saving…
+                Creating…
               </>
             ) : (
-              "Save preset"
+              "Create"
             )}
           </Button>
         </DialogFooter>
@@ -939,29 +764,30 @@ function UploadPresetDialog({
   )
 }
 
-function SidePanel({
+// ---------------------------------------------------------------------------
+// PBR side panel — list of channel slots
+// ---------------------------------------------------------------------------
+
+function PbrSidePanel({
   label,
-  side,
   files,
   onChange,
 }: {
   label: string
-  side: "front" | "back"
-  files: SideFiles
-  onChange: (next: SideFiles) => void
+  files: PbrFiles
+  onChange: (next: PbrFiles) => void
 }) {
   return (
-    <div className="rounded-md border bg-muted/30 p-3">
-      <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <div className="rounded-md border bg-background/50 p-2.5">
+      <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
         {label}
       </div>
-      <div className="flex flex-col gap-2">
-        {CHANNELS.map((c) => (
-          <ChannelRow
+      <div className="flex flex-col gap-1.5">
+        {PBR_CHANNELS.map((c) => (
+          <FileSlot
             key={c.key}
-            id={`${side}_${c.key}`}
             label={c.label}
-            file={files[c.key]}
+            file={files[c.key] ?? null}
             onFile={(f) => {
               const next = { ...files }
               if (f) next[c.key] = f
@@ -975,68 +801,65 @@ function SidePanel({
   )
 }
 
-function ChannelRow({
-  id,
+// ---------------------------------------------------------------------------
+// FileSlot — single file picker with preview thumbnail
+// ---------------------------------------------------------------------------
+
+function FileSlot({
   label,
   file,
   onFile,
 }: {
-  id: string
   label: string
-  file: File | undefined
+  file: File | null
   onFile: (f: File | null) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const previewUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file])
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl)
+    if (!file) {
+      setPreviewUrl(null)
+      return
     }
-  }, [previewUrl])
+    const url = URL.createObjectURL(file)
+    setPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
 
   return (
     <div className="flex items-center gap-2">
-      <Label htmlFor={id} className="w-20 shrink-0 text-xs">
-        {label}
-      </Label>
-
+      <Label className="w-24 shrink-0 text-[11px] text-muted-foreground">{label}</Label>
       <input
         ref={inputRef}
-        id={id}
         type="file"
         accept="image/png,image/jpeg,image/webp"
         className="hidden"
         onChange={(e) => {
-          const f = e.target.files?.[0]
-          onFile(f ?? null)
+          onFile(e.target.files?.[0] ?? null)
           e.target.value = ""
         }}
       />
-
       {file ? (
         <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border bg-background px-2 py-1">
-          <div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded border bg-muted">
+          <div className="flex size-6 shrink-0 items-center justify-center overflow-hidden rounded border bg-muted">
             {previewUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={previewUrl} alt="" className="size-full object-cover" />
             ) : (
-              <ImageIcon className="size-3.5 text-muted-foreground" />
+              <ImageIcon className="size-3 text-muted-foreground" />
             )}
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-xs font-medium">{file.name}</div>
-            <div className="text-[10px] text-muted-foreground">{formatSize(file.size)}</div>
-          </div>
+          <span className="min-w-0 flex-1 truncate text-[11px]">{file.name}</span>
           <Button
             type="button"
             size="icon"
             variant="ghost"
-            className="size-6 shrink-0"
+            className="size-5 shrink-0"
             onClick={() => onFile(null)}
             aria-label={`Remove ${label}`}
           >
-            <X className="size-3.5" />
+            <X className="size-3" />
           </Button>
         </div>
       ) : (
@@ -1044,266 +867,13 @@ function ChannelRow({
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 flex-1 justify-start gap-1.5 bg-background font-normal text-muted-foreground"
+          className="h-7 flex-1 justify-start gap-1.5 bg-background font-normal text-muted-foreground"
           onClick={() => inputRef.current?.click()}
         >
-          <Upload className="size-3.5" />
+          <Upload className="size-3" />
           Choose file…
         </Button>
       )}
     </div>
   )
-}
-
-/**
- * Dialog to edit preset name, replace textures, and update material settings.
- * Shows different UI for Simple vs PBR presets.
- */
-function EditPresetDialog({
-  preset,
-  snapshotMaterial,
-}: {
-  preset: DesignPreset
-  snapshotMaterial: () => PresetMaterial
-}) {
-  const presets = useStudio((s) => s.presets)
-  const setPresets = useStudio((s) => s.setPresets)
-
-  const isSimple = preset.type === "simple"
-
-  const [open, setOpen] = useState(false)
-  const [editName, setEditName] = useState(preset.name)
-  const [includeMaterial, setIncludeMaterial] = useState(!!preset.material)
-  const [updating, setUpdating] = useState(false)
-  
-  // Simple mode state
-  const [frontAlbedo, setFrontAlbedo] = useState<File | null>(null)
-  const [frontGloss, setFrontGloss] = useState<File | null>(null)
-  const [backDesign, setBackDesign] = useState<File | null>(null)
-  const [backColor, setBackColor] = useState(preset.backColor || "#ffffff")
-  
-  // PBR mode state
-  const [front, setFront] = useState<SideFiles>({})
-  const [back, setBack] = useState<SideFiles>({})
-
-  const totalCount = isSimple
-    ? (frontAlbedo ? 1 : 0) + (frontGloss ? 1 : 0) + (backDesign ? 1 : 0)
-    : Object.keys(front).length + Object.keys(back).length
-
-  const resetAll = () => {
-    setFront({})
-    setBack({})
-    setFrontAlbedo(null)
-    setFrontGloss(null)
-    setBackDesign(null)
-  }
-
-  const handleSave = async () => {
-    if (!editName.trim()) {
-      toast.error("Enter a preset name")
-      return
-    }
-
-    setUpdating(true)
-    try {
-      let frontFiles: Record<string, File> = {}
-      let backFiles: Record<string, File> = {}
-
-      if (isSimple) {
-        if (frontAlbedo) frontFiles.albedo = frontAlbedo
-        if (frontGloss) frontFiles.metallic = frontGloss
-        if (backDesign) backFiles.albedo = backDesign
-      } else {
-        frontFiles = front as Record<string, File>
-        backFiles = back as Record<string, File>
-      }
-
-      // Save updated name, textures, and optionally new material
-      const updatedPreset: DesignPreset = {
-        ...preset,
-        name: editName.trim(),
-        backColor: isSimple ? backColor : preset.backColor,
-        material: includeMaterial ? snapshotMaterial() : preset.material,
-        createdAt: preset.createdAt,
-      }
-
-      await savePreset({
-        id: preset.id,
-        name: updatedPreset.name,
-        type: preset.type,
-        frontFiles,
-        backFiles,
-        backColor: isSimple ? backColor : undefined,
-        material: updatedPreset.material,
-      })
-
-      // Update local state
-      setPresets(presets.map((p) => (p.id === preset.id ? updatedPreset : p)))
-
-      toast.success("Preset updated")
-      setOpen(false)
-      resetAll()
-    } catch (err) {
-      console.error("[v0] preset update error:", err)
-      toast.error("Failed to update preset")
-    } finally {
-      setUpdating(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7"
-          aria-label="Edit preset textures"
-        >
-          <Edit2 className="size-3.5" />
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Edit {isSimple ? "Simple" : "PBR"} Design</DialogTitle>
-          <DialogDescription>
-            {isSimple
-              ? "Update design images and back color."
-              : "Update the preset name, replace textures, and material settings."}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-          <div className="space-y-2">
-            <Label htmlFor="edit-preset-name" className="text-sm">
-              Preset name
-            </Label>
-            <Input
-              id="edit-preset-name"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              placeholder="e.g., My custom design"
-              className="text-sm"
-            />
-          </div>
-
-          {/* Simple mode texture replacement */}
-          {isSimple ? (
-            <div className="space-y-3">
-              <Label className="text-sm">Replace images (optional)</Label>
-              
-              {/* Front */}
-              <div className="rounded-md border bg-muted/30 p-3 space-y-2">
-                <p className="text-xs font-medium uppercase text-muted-foreground">Front</p>
-                <FileInput
-                  label="Design (Albedo)"
-                  file={frontAlbedo}
-                  onFile={setFrontAlbedo}
-                  accept="image/*"
-                />
-                <FileInput
-                  label="Gloss (Metallic)"
-                  file={frontGloss}
-                  onFile={setFrontGloss}
-                  accept="image/*"
-                />
-              </div>
-              
-              {/* Back */}
-              <div className="rounded-md border bg-muted/30 p-3 space-y-2">
-                <p className="text-xs font-medium uppercase text-muted-foreground">Back</p>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Background color</span>
-                  <input
-                    type="color"
-                    value={backColor}
-                    onChange={(e) => setBackColor(e.target.value)}
-                    className="size-7 rounded cursor-pointer"
-                  />
-                </div>
-                <FileInput
-                  label="Design (optional)"
-                  file={backDesign}
-                  onFile={setBackDesign}
-                  accept="image/*"
-                />
-              </div>
-            </div>
-          ) : (
-            /* PBR mode texture replacement */
-            <div className="space-y-2">
-              <Label className="text-sm">Replace textures (optional)</Label>
-              <div className="grid grid-cols-1 gap-3">
-                <SidePanel label="Front" side="front" files={front} onChange={setFront} />
-                <SidePanel label="Back" side="back" files={back} onChange={setBack} />
-              </div>
-              {totalCount > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {totalCount} file{totalCount === 1 ? "" : "s"} ready to replace.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Current material info - only for PBR */}
-          {!isSimple && preset.material && (
-            <div className="space-y-2 rounded-md border bg-muted/20 p-2.5">
-              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                Current material
-              </p>
-              <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Roughness:</span>
-                  <span className="font-mono font-medium">{preset.material.cardRoughness.toFixed(2)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Clearcoat:</span>
-                  <span className="font-mono font-medium">{preset.material.cardClearcoat.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-muted/30 p-2.5 text-xs">
-            <input
-              type="checkbox"
-              checked={includeMaterial}
-              onChange={(e) => setIncludeMaterial(e.target.checked)}
-              className="mt-0.5 size-3.5 cursor-pointer accent-primary"
-            />
-            <span className="flex flex-col gap-0.5">
-              <span className="font-medium text-foreground">Update material settings</span>
-              <span className="text-muted-foreground">
-                {preset.material
-                  ? "Replace the saved material with current settings."
-                  : "Save the current card roughness and clearcoat settings to this design."}
-              </span>
-            </span>
-          </label>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={updating}>
-            {updating ? (
-              <>
-                <Loader2 className="mr-1.5 size-4 animate-spin" />
-                Saving…
-              </>
-            ) : (
-              "Save Changes"
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function formatSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }

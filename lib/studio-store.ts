@@ -27,7 +27,13 @@ export type HdrPreset =
   | "sunset"
   | "warehouse"
 
-/** URLs of PBR maps. Absent means "do not use that channel". */
+/**
+ * URLs of PBR maps. Absent means "do not use that channel".
+ *
+ * `clearcoatMask` is used by Simple presets only — a black/white texture where
+ * white = glossy lacquer (e.g. monster eyes), black = matte. Maps to the
+ * MeshPhysicalMaterial's `clearcoatMap`.
+ */
 export type PbrMapSet = {
   albedo?: string
   normal?: string
@@ -37,31 +43,28 @@ export type PbrMapSet = {
   height?: string
   /** Packed Occlusion/Roughness/Metallic (R=ao, G=roughness, B=metallic). If present, overrides separate roughness/metallic/ao. */
   orm?: string
+  /** Simple-preset only: gloss / lacquer mask (white = shiny). */
+  clearcoatMask?: string
 }
 
 export type DesignPreset = {
   id: string
   name: string
-  /** Preset type: "simple" for albedo+gloss, "pbr" for full PBR */
-  type?: "simple" | "pbr"
+  /** "simple" = albedo + optional clearcoat mask; "pbr" = full PBR set */
+  type: "simple" | "pbr"
   front: PbrMapSet
   back: PbrMapSet
-  /** Background color for simple presets (back side) */
+  /** Background color for the back side (composited under backTemplate) */
   backColor?: string
-  /**
-   * Per-design material overrides. Optional for backwards-compat with presets
-   * created before this field was introduced. When present, applying the preset
-   * also restores all card-material-level state (roughness, glare, holo, foil…).
-   * Scene-level state (env, lighting, chip, logo) intentionally NOT included so
-   * the user keeps their global studio setup when switching designs.
-   */
+  /** Optional PNG template overlay for the back side (e.g. card numbers, QR) */
+  backTemplate?: string
+  /** Per-design material overrides. */
   material?: PresetMaterial
   createdAt: number
 }
 
 /**
- * The material-side state that travels with a design preset. Mirrors a subset
- * of `StudioState` — keep this in sync with `MATERIAL_KEYS` in studio-store.
+ * The material-side state that travels with a design preset.
  */
 export type PresetMaterial = {
   cardRoughness: number
@@ -90,10 +93,6 @@ export type PresetMaterial = {
   foilTint: string
 }
 
-/**
- * Keys whose values get snapshotted into / restored from a preset's `material`.
- * Single source of truth used by both saving and applying logic.
- */
 export const MATERIAL_KEYS = [
   "cardRoughness",
   "cardMetalness",
@@ -131,16 +130,18 @@ export type StudioState = {
   viewId: ViewId
   autoRotate: boolean
   projection: Projection
-  /** Focal length in mm (35mm film equivalent). Overrides per-view FOV when in perspective mode. */
   focalLength: number
 
   // PBR per side
   frontPbr: PbrMapSet
   backPbr: PbrMapSet
-  /** Mirror all PBR texture samplers horizontally. */
   textureFlipH: boolean
-  /** Mirror all PBR texture samplers vertically. Flip this if the uploaded design appears upside-down. */
   textureFlipV: boolean
+
+  /** Background color for the back side (always applied under any back albedo/template). */
+  backColor: string
+  /** Optional PNG overlay drawn on top of backColor (uses its alpha channel). */
+  backTemplate?: string
 
   // Card material tuning
   cardRoughness: number
@@ -148,9 +149,7 @@ export type StudioState = {
   cardNormalScale: number
   cardClearcoat: number
   cardClearcoatRoughness: number
-  /** Hex color used to tint the thin side bevel of the card. */
   cardEdgeColor: string
-  /** 0..1 — how strongly the edge color overrides the PBR side shading. */
   cardEdgeTint: number
 
   // Chip shader
@@ -168,26 +167,18 @@ export type StudioState = {
   glareWidth: number
   glareSoftness: number
 
-  // Holographic shine (iridescent rainbow overlay, react-native-shine style)
+  // Holographic shine
   holoEnabled: boolean
-  /** Overall brightness of the rainbow band (0..2). */
   holoIntensity: number
-  /** Stripe frequency — higher = more, tighter bands. */
   holoScale: number
-  /** Static rotation of the color wheel in [0..1] (maps to 0..360°). */
   holoHueShift: number
 
-  // Foil / glitter (MTG-style sheen blob + view-dependent sparkle stars)
+  // Foil / glitter
   foilEnabled: boolean
-  /** Brightness of the moving pearlescent blob (0..2). */
   foilSheen: number
-  /** Brightness of individual sparkle stars (0..3). */
   foilSparkle: number
-  /** Grid density of sparkles — higher = more, finer stars. */
   foilDensity: number
-  /** Per-star radius multiplier (0.2..4). 1 ≈ previous default. */
   foilSparkleSize: number
-  /** Hex color the sheen blob is tinted with. Sparkles stay white. */
   foilTint: string
 
   // Logo
@@ -208,13 +199,9 @@ export type StudioState = {
   keyIntensity: number
   fillIntensity: number
   rimIntensity: number
-  /** Hex color of the main (key) directional light that orbits the card. */
   keyColor: string
-  /** Hex color of the rim backlight pair that grazes the card's silhouette. */
   rimColor: string
-  /** Azimuth (degrees, 0..360) of the key light / HDR rotation around the card's up axis. */
   lightAzimuth: number
-  /** Elevation (degrees, 0..89) of the key light above the horizon. */
   lightElevation: number
 
   // Capture
@@ -224,52 +211,17 @@ export type StudioState = {
   // Presets (server-backed via Blob)
   presets: DesignPreset[]
   activePresetId: string | null
-
-  // Solid / gradient fill override — replaces the PBR albedo per side when active.
-  // Deliberately client-only (not persisted to Blob) because it's just a local
-  // color choice, not a design worth sharing across sessions.
-  frontFill: FillConfig
-  backFill: FillConfig
+  /** "simple" or "pbr" — drives shader behavior (Simple skips normal/roughness/metallic/ao). */
+  activePresetType: "simple" | "pbr"
 
   // Setters
   set: <K extends keyof StudioState>(key: K, value: StudioState[K]) => void
   setMany: (patch: Partial<StudioState>) => void
   setFrontPbr: (patch: Partial<PbrMapSet>) => void
   setBackPbr: (patch: Partial<PbrMapSet>) => void
-  setFrontFill: (patch: Partial<FillConfig>) => void
-  setBackFill: (patch: Partial<FillConfig>) => void
   applyPreset: (preset: DesignPreset) => void
   setPresets: (presets: DesignPreset[]) => void
 }
-
-/**
- * Local-only per-side solid / gradient fill config.
- *
- * - `none` lets the underlying PBR albedo (or preset design) show through — the
- *   fill pipeline becomes a no-op.
- * - `solid` paints `color1` uniformly.
- * - `gradient` draws a linear gradient from `color1` to `color2` at `angle`
- *   degrees (0° = left→right, 90° = bottom→top, counter-clockwise positive).
- */
-export type FillConfig = {
-  type: "none" | "solid" | "gradient"
-  color1: string
-  color2: string
-  /** Gradient direction in degrees. Ignored for `solid`. */
-  angle: number
-}
-
-const DEFAULT_DOODLE_FRONT: PbrMapSet = {
-  albedo: "/textures/doodle/albedo.png",
-  normal: "/textures/doodle/normal.png",
-  roughness: "/textures/doodle/roughness.png",
-  metallic: "/textures/doodle/metallic.png",
-  ao: "/textures/doodle/ao.png",
-  height: "/textures/doodle/height.png",
-  orm: "/textures/doodle/orm.png",
-}
-
-const DEFAULT_DOODLE_BACK: PbrMapSet = { ...DEFAULT_DOODLE_FRONT }
 
 export const useStudio = create<StudioState>((set) => ({
   modelId: "card_chip1",
@@ -281,10 +233,13 @@ export const useStudio = create<StudioState>((set) => ({
   projection: "perspective",
   focalLength: 65,
 
-  frontPbr: DEFAULT_DOODLE_FRONT,
-  backPbr: DEFAULT_DOODLE_BACK,
+  frontPbr: {},
+  backPbr: {},
   textureFlipH: false,
   textureFlipV: false,
+
+  backColor: "#000000",
+  backTemplate: undefined,
 
   cardRoughness: 1,
   cardMetalness: 0.19,
@@ -304,6 +259,8 @@ export const useStudio = create<StudioState>((set) => ({
   glareMode: "clearcoat",
   glareIntensity: 0.7,
   glareRotation: 20,
+  glareWidth: 0.35,
+  glareSoftness: 0.4,
 
   holoEnabled: false,
   holoIntensity: 0.9,
@@ -316,8 +273,6 @@ export const useStudio = create<StudioState>((set) => ({
   foilDensity: 80,
   foilSparkleSize: 1,
   foilTint: "#fff4cc",
-  glareWidth: 0.35,
-  glareSoftness: 0.4,
 
   showLogo: true,
   logoScale: 1.6,
@@ -345,34 +300,24 @@ export const useStudio = create<StudioState>((set) => ({
 
   presets: [],
   activePresetId: null,
-
-  frontFill: { type: "none", color1: "#6366f1", color2: "#ec4899", angle: 135 },
-  backFill: { type: "none", color1: "#6366f1", color2: "#ec4899", angle: 135 },
+  activePresetType: "pbr",
 
   set: (key, value) => set((s) => ({ ...s, [key]: value })),
   setMany: (patch) => set((s) => ({ ...s, ...patch })),
   setFrontPbr: (patch) => set((s) => ({ frontPbr: { ...s.frontPbr, ...patch } })),
   setBackPbr: (patch) => set((s) => ({ backPbr: { ...s.backPbr, ...patch } })),
-  setFrontFill: (patch) => set((s) => ({ frontFill: { ...s.frontFill, ...patch } })),
-  setBackFill: (patch) => set((s) => ({ backFill: { ...s.backFill, ...patch } })),
   applyPreset: (preset) =>
     set((s) => {
       const next: Partial<StudioState> = {
         activePresetId: preset.id,
+        activePresetType: preset.type,
         frontPbr: preset.front,
         backPbr: preset.back,
+        backColor: preset.backColor ?? "#000000",
+        backTemplate: preset.backTemplate,
       }
-      
-      // For Simple presets with backColor, set backFill to solid color
-      if (preset.type === "simple" && preset.backColor) {
-        next.backFill = { type: "solid", color1: preset.backColor, color2: preset.backColor, angle: 0 }
-      }
-      
-      // If the preset carries baked material settings (new-format presets),
-      // restore them too so each design renders exactly how it was saved.
       if (preset.material) {
         for (const k of MATERIAL_KEYS) {
-          // The keys are typed via `satisfies`, so this cast is safe at runtime.
           ;(next as Record<string, unknown>)[k] = preset.material[k]
         }
       }

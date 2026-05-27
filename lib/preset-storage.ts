@@ -31,7 +31,8 @@ export async function loadPresets(): Promise<DesignPreset[]> {
     type: p.type || "pbr",
     front: filterNulls(p.front),
     back: filterNulls(p.back),
-    backColor: p.backColor,
+    backColor: p.backColor ?? undefined,
+    backTemplate: p.backTemplate ?? undefined,
     material: p.material as PresetMaterial | undefined,
     createdAt: p.createdAt,
   }))
@@ -47,9 +48,12 @@ export async function savePreset(params: {
   frontFiles: Record<string, File>
   backFiles: Record<string, File>
   backColor?: string
+  backTemplate?: string
+  /** Pass `null` to clear the back template, omit to keep existing. */
+  backTemplateClear?: boolean
   material?: PresetMaterial
 }): Promise<DesignPreset> {
-  const { id, name, type, frontFiles, backFiles, backColor, material } = params
+  const { id, name, type, frontFiles, backFiles, backColor, backTemplate, backTemplateClear, material } = params
   
   const frontUrls: Record<string, string> = {}
   const backUrls: Record<string, string> = {}
@@ -77,6 +81,7 @@ export async function savePreset(params: {
       front: frontUrls,
       back: backUrls,
       backColor,
+      backTemplate: backTemplateClear ? null : backTemplate,
       material,
     }),
   })
@@ -95,7 +100,8 @@ export async function savePreset(params: {
     type: preset.type,
     front: filterNulls(preset.front) as PbrMapSet,
     back: filterNulls(preset.back) as PbrMapSet,
-    backColor: preset.backColor,
+    backColor: preset.backColor ?? undefined,
+    backTemplate: preset.backTemplate ?? undefined,
     material: preset.material as PresetMaterial | undefined,
     createdAt: preset.createdAt,
   }
@@ -149,6 +155,7 @@ type ApiPreset = {
   front: Record<string, string | null>
   back: Record<string, string | null>
   backColor: string | null
+  backTemplate: string | null
   material: Record<string, unknown> | null
   createdAt: number
 }
